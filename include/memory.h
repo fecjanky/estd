@@ -48,6 +48,13 @@ namespace impl {
         static constexpr bool value = false;
     };
 
+    struct DefaultCloningPolicy {
+        template<typename T>
+        static T* Clone(const T* from, void* to) {
+            return from->clone(to);
+        }
+    };
+
 }
 
 template<
@@ -63,10 +70,24 @@ public:
     static constexpr size_t alignment = align;
     static_assert(impl::is_power_of<2,alignment>::value,"alignment is not a power of 2");
 
+    using MyAllocator = typename std::allocator_traits<Allocator>::template rebind_alloc<uint8_t>;
+
     obj_storage_t():storage{},size{}{}
 
     explicit obj_storage_t(size_t n):storage{},size{}{
         allocate(n);
+    }
+
+    obj_storage_t(const obj_storage_t& rhs) : storage{},size {} {
+        if (rhs.size && rhs.size <= max_size)
+            allocate_inline(rhs.size);
+        else if(rhs.size)
+            allocate_on_heap(rhs.size);
+    }
+
+    obj_storage_t& operator= (const obj_storage_t& rhs) {
+        deallocate();
+        if (rhs.size > 0) allocate(rhs.size);
     }
 
     void* allocate(size_t n){
@@ -80,12 +101,16 @@ public:
 
     void deallocate(){
         if(size > max_size)
-            delete[] heap_storage;
+            this->MyAllocator::deallocate(heap_storage,size);
         size = 0;
     }
 
     ~obj_storage_t(){
         deallocate();
+    }
+
+    operator bool ()const{
+        return size != 0;
     }
 
     void* get() const {
@@ -97,7 +122,13 @@ public:
             return &*storage.begin();
     }
 
+    template<size_t N>
+    static constexpr bool is_alignment_ok() {
+        return N < alignment && impl::is_power_of<2, N>::value;
+    }
+
 private:
+
     void* allocate_inline(size_t n){
         size = n;
         return &*storage.begin();
@@ -106,7 +137,7 @@ private:
     void* allocate_on_heap(size_t n){
         // allocating +alignment bytes to be able to
         // align heap storage as well
-        heap_storage = new uint8_t[n+alignment];
+        heap_storage = static_cast<uint8_t*>(this->allocate(n+alignment));
         return aligned_heap_addr(heap_storage);
     }
 
@@ -125,14 +156,94 @@ private:
     ///////////////
 
      union alignas(alignment) {
-        std::array<std::uint8_t,max_size> storage;
-        std::uint8_t* heap_storage;
+         mutable std::array<std::uint8_t,max_size> storage;
+         mutable std::uint8_t* heap_storage;
     };
 
     size_t size;
 };
 
 using obj_storage = obj_storage_t<>;
+
+template<
+    class IF,
+    typename CloningPolicy = impl::DefaultCloningPolicy,
+    size_t max_size_in_ptr_size = 4,
+    size_t align = alignof(double),
+class Allocator = std::allocator<uint8_t>
+>
+class polymorphic_obj_storage_t {
+public:
+    static_assert(std::is_polymorphic<IF>::value, "IF class is not polymorphic");
+    
+    template<
+        typename T, 
+        typename = std::enable_if_t < std::is_base_of<IF,std::decay_t<T>>::value >
+    > polymorphic_obj_storage_t(T&& t) : storage{sizeof(T)} {
+        static_assert(storage_t::is_alignment_ok<alignof(std::decay_t<T>)>(), "T is not properly aligned");
+
+        // TODO(fecjanky): look after whether this check is necessary
+        if ((static_cast<IF*>(nullptr) - static_cast<IF*>(static_cast<T*>(nullptr))) != 0)
+            throw std::runtime_error("polymorphic_obj_storage_t alignment error");
+
+        new (storage.get()) T(std::forward<T>(t));
+    }
+
+    polymorphic_obj_storage_t() : storage{}{}
+
+    polymorphic_obj_storage_t(const polymorphic_obj_storage_t& rhs) : storage{rhs.storage} {
+        CloningPolicy::Clone(rhs.get(), storage.get());
+    }
+
+    polymorphic_obj_storage_t& operator=(const polymorphic_obj_storage_t& rhs) 
+    {
+        if (this != &rhs) {
+            destroy();
+            storage = rhs.storage;
+            CloningPolicy::Clone(rhs.get(),storage.get());
+        }
+        return *this;
+    }
+
+
+    ~polymorphic_obj_storage_t() {
+        destroy();
+    }
+
+
+    IF* get() {
+        return reinterpret_cast<IF*>(storage.get());
+    }
+
+    const IF* get() const {
+        return reinterpret_cast<const IF*>(storage.get());
+    }
+
+    operator bool()const
+    {
+        return storage;
+    }
+
+    IF* operator->() {
+        return storage ? get() : nullptr;
+    }
+
+    const IF* operator->() const {
+        return storage ? get() : nullptr;
+    }
+
+private:
+    void destroy() {
+        if (storage)
+            get()->~IF();
+    }
+
+    using storage_t = obj_storage_t<max_size_in_ptr_size, align, Allocator>;
+    storage_t storage;
+};
+
+template<typename IF>
+using polymorphic_obj_storage = polymorphic_obj_storage_t<IF>;
 
 } //namespace estd
 

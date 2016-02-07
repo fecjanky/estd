@@ -93,7 +93,7 @@ int main() {
     std::vector<int> v{};
     using my_if = estd::interface<func_1, func_2, func_3, func_4, func_5>;
     my_if i (MyImpl{});
-
+    std::cout << sizeof(my_if) << std::endl;
     my_if i2 = i;
 
     //estd::interface<func_1,func_2,func_3,func_4,func_5> i2 (MyImpl2{});

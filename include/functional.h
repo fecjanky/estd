@@ -24,6 +24,7 @@
 #include <utility>
 #include <type_traits>
 #include <functional>
+#include "memory.h"
 
 namespace estd {
 namespace impl {
@@ -85,6 +86,14 @@ struct IFunction<R(Args...)> {
 template<typename... F>
 struct IInterface : public IFunction<F...>{
     virtual IInterface* clone_implementation__() const = 0;
+    virtual IInterface* clone_implementation__(void* dest) const = 0;
+};
+
+struct IInterfaceCloningPolicy {
+    template<typename T>
+    static T* Clone(const T* from, void* to) {
+        return from->clone_implementation__(to);
+    }
 };
 
 template<typename IF,typename Impl,typename... F>
@@ -159,6 +168,12 @@ struct BindImpl : public Binder<IF, Impl, F...> {
     {
         return new BindImpl(*this);
     }
+
+    BindImpl* clone_implementation__(void* dest) const override
+    {
+        return new (dest) BindImpl(*this);
+    }
+
 };
 } // namespace impl
 
@@ -204,7 +219,6 @@ function_view_t<IF, F> function_view(IF& i) {
     return function_view_t<IF, F>(i);
 }
 
-// TODO(fecjanky): Add Small Object Optimization
 template<typename... Fs>
 struct interface{
 
@@ -213,7 +227,7 @@ struct interface{
     template<
         typename T,
         typename = std::enable_if_t< !std::is_base_of<interface,T>::value >
-    > explicit interface(const T& t) : impl{new impl::BindImpl<if_t,T,Fs...>(t)} {
+    > explicit interface(const T& t) : impl_{impl::BindImpl<if_t,T,Fs...>(t)} {
     }
 
     template<typename R,typename... Args>
@@ -222,7 +236,7 @@ struct interface{
         R
     > operator()(Args&&... args){
         check();
-        return impl->call_function__(std::forward<Args>(args)...);
+        return impl_->call_function__(std::forward<Args>(args)...);
     }
 
     template<typename R,typename... Args>
@@ -230,40 +244,31 @@ struct interface{
       std::is_same<void,R>::value
     > operator()(Args&&... args){
         check();
-        impl->call_function__(std::forward<Args>(args)...);
+        impl_->call_function__(std::forward<Args>(args)...);
     }
 
-    interface(const interface& i) 
-        : impl { i.impl ? i.impl->clone_implementation__() : nullptr }{}
+    interface(const interface& i) = default;
+    interface& operator = (const interface& i) = default;
 
-    interface& operator = (const interface& i) {
-        if (this != &rhs) {
-            delete impl;
-            impl = i.impl ? i.impl->clone_implementation__() : nullptr;
-        }
-        return *this;
-    }
-
-    interface(interface&& i) noexcept : impl{nullptr} {
-        std::swap(impl,i.impl);
+    interface(interface&& i) noexcept : impl_ {} {
+        std::swap(impl_,i.impl_);
     }
 
     interface& operator= (interface&& rhs) noexcept{
         if(this != & rhs)
-            std::swap(impl,rhs.impl);
+            std::swap(impl_,rhs.impl_);
         return *this;
     }
 
-    ~interface(){
-        delete impl;
-    }
+    ~interface() = default;
 
 private:
     void check(){
-        if (! impl ) throw std::runtime_error(
+        if (!impl_) throw std::runtime_error(
                 "Invocation on interface without implementation");
     }
-    if_t* impl;
+
+    polymorphic_obj_storage_t<if_t,impl::IInterfaceCloningPolicy> impl_;
 };
 
 template<typename F>
