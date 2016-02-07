@@ -28,6 +28,29 @@
 namespace estd {
 namespace impl {
 
+template<bool,typename T1,typename T2>
+struct If {
+    using type = T1;
+};
+
+template<typename T1, typename T2>
+struct If<false,T1,T2> {
+    using type = T2;
+};
+
+template<bool b, typename T1, typename T2>
+using If_t = typename If<b, T1, T2>::type;
+
+template<bool b,bool... B>
+struct And {
+    static constexpr bool value = b && And<B...>::value;
+};
+
+template<bool b, bool B>
+struct And<b,B> {
+    static constexpr bool value = b && B;
+};
+
 template<typename... F>
 struct IFunction;
 
@@ -61,8 +84,7 @@ struct IFunction<R(Args...)> {
 
 template<typename... F>
 struct IInterface : public IFunction<F...>{
-    virtual IInterface* clone() const = 0;
-//    virtual IInterface* clone(IInterface* dest) = 0;
+    virtual IInterface* clone_implementation__() const = 0;
 };
 
 template<typename IF,typename Impl,typename... F>
@@ -78,7 +100,7 @@ struct Binder<IF,Impl,R(Args...),F...> : public Binder<IF,Impl,F...>{
     MyT(const MyT& b) : MyBase{ b } {}
 
     R call_function__(Args... args) override{
-        return this->Impl::operator()(args...);
+        return this->Impl::operator()(std::forward<Args>(args)...);
     }
 
 };
@@ -93,7 +115,7 @@ struct Binder<IF,Impl,void(Args...),F...> : public Binder<IF,Impl,F...>{
     MyT(const MyT& b) : MyBase{ b } {}
 
     void call_function__(Args... args) override{
-       this->Impl::operator()(args...);
+       this->Impl::operator()(std::forward<Args>(args)...);
     }
 
 };
@@ -108,7 +130,7 @@ struct Binder<IF,Impl,R(Args...)> : public IF, public Impl {
     MyT(const MyT& b) : MyBase{ b } {}
 
     R call_function__(Args... args) override {
-        return this->Impl::operator()(args...);
+        return this->Impl::operator()(std::forward<Args>(args)...);
     }
 
 };
@@ -123,7 +145,7 @@ struct Binder<IF,Impl,void(Args...)> : public IF, public Impl {
     MyT(const MyT& b) : MyBase{ b } {}
 
     void call_function__(Args... args) override {
-        this->Impl::operator()(args...);
+        this->Impl::operator()(std::forward<Args>(args)...);
     }
 };
 
@@ -133,7 +155,7 @@ struct BindImpl : public Binder<IF, Impl, F...> {
     BindImpl(const Impl&i) : Binder<IF, Impl, F...>(i) {}
     BindImpl(const BindImpl& b) : Binder<IF, Impl, F...>(b) {}
 
-    BindImpl* clone() const override
+    BindImpl* clone_implementation__() const override
     {
         return new BindImpl(*this);
     }
@@ -149,6 +171,10 @@ struct function_view_t<IF,R(Args...)>{
 
     template<typename... AArgs>
     R operator()(AArgs&&... args){
+        static_assert(
+            sizeof...(Args) == sizeof...(AArgs) &&
+            impl::And<std::is_convertible<AArgs, Args>::value...>::value,
+            "Interface is not callable");
         return i.operator()<R>(std::forward<AArgs>(args)...);
     }
 
@@ -162,7 +188,11 @@ struct function_view_t<IF,void(Args...)>{
 
     template<typename... AArgs>
     void operator()(AArgs&&... args){
-        return i.operator()<void>(std::forward<AArgs>(args)...);
+        static_assert(
+            sizeof...(Args) == sizeof...(AArgs) &&
+            impl::And<std::is_convertible<AArgs, Args>::value...>::value,
+            "Interface is not callable");
+        i.operator()<void>(std::forward<AArgs>(args)...);
     }
 
 private:
@@ -183,32 +213,33 @@ struct interface{
     template<
         typename T,
         typename = std::enable_if_t< !std::is_base_of<interface,T>::value >
-    > interface(const T& t) : impl{new impl::BindImpl<if_t,T,Fs...>(t)} {
+    > explicit interface(const T& t) : impl{new impl::BindImpl<if_t,T,Fs...>(t)} {
     }
 
     template<typename R,typename... Args>
     std::enable_if_t<
         !std::is_same<void,R>::value,
         R
-    > operator()(Args... args){
+    > operator()(Args&&... args){
         check();
-        return impl->call_function__(args...);
+        return impl->call_function__(std::forward<Args>(args)...);
     }
 
     template<typename R,typename... Args>
     std::enable_if_t<
       std::is_same<void,R>::value
-    > operator()(Args... args){
+    > operator()(Args&&... args){
         check();
-        impl->call_function__(args...);
+        impl->call_function__(std::forward<Args>(args)...);
     }
 
-    interface(const interface& i) : impl { i.impl ? i.impl->clone() : nullptr }{}
+    interface(const interface& i) 
+        : impl { i.impl ? i.impl->clone_implementation__() : nullptr }{}
 
     interface& operator = (const interface& i) {
         if (this != &rhs) {
             delete impl;
-            impl = i.impl ? i.impl->clone() : nullptr;
+            impl = i.impl ? i.impl->clone_implementation__() : nullptr;
         }
         return *this;
     }

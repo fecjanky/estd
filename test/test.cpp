@@ -51,8 +51,9 @@ struct MyImpl {
         return "MyImpl";
     }
 
-    void operator()(set_name_t,const std::string& s){
+    void operator()(set_name_t,std::string&& s){
         std::cout << s << std::endl;
+        auto ss = std::move(s);
     }
 
 };
@@ -81,30 +82,28 @@ struct MyImpl2{
 };
 
 
-template<typename T>
-using reference_t = std::reference_wrapper<T>;
-
 using func_1 = double(int,double);
-using func_2 = int(reference_t<std::vector<int>>);
-using func_3 = void(reference_t<std::vector<int>>,int);
-
-
+using func_2 = int(std::vector<int>&);
+using func_3 = void(std::vector<int>&,int);
 using func_4 = std::string(get_name_t);
-using func_5 = void(set_name_t,reference_t<const std::string>);
+using func_5 = void(set_name_t,std::string&&);
 
 int main() {
     using namespace estd;
     std::vector<int> v{};
+    using my_if = estd::interface<func_1, func_2, func_3, func_4, func_5>;
+    my_if i (MyImpl{});
 
-    estd::interface<func_1,func_2> i (MyImpl{});
-
-    estd::interface<func_1, func_2> i2 = i;
+    my_if i2 = i;
 
     //estd::interface<func_1,func_2,func_3,func_4,func_5> i2 (MyImpl2{});
 
     //static_assert(std::is_same<decltype(i),decltype(i2)>::value ,"Oh shit...");
-
-    function_view<func_1>(i)(3,3.4);
+    std::string s = "hello";
+    //std::reference_wrapper<std::string&&> sr(std::move(s));
+    function_view<func_1>(i)(3, 3.4);
+    function_view<func_3>(i)(v,0);
+    function_view<func_5>(i)(set_name_t{}, std::move(s));
     obj_storage o;
     o.allocate(4);
     return 0;

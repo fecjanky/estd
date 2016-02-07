@@ -91,7 +91,7 @@ public:
     void* get() const {
         if(size == 0)
             throw std::runtime_error("accessing unallocated storage");
-        if(size>max_size)
+        else if(size>max_size)
             return aligned_heap_addr(heap_storage);
         else
             return &*storage.begin();
