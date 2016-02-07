@@ -121,5 +121,5 @@ int main() {
 
     obj_storage o;
     o.allocate(4);
-	return 0;
+    return 0;
 }
