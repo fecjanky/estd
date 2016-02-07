@@ -96,29 +96,15 @@ int main() {
     using namespace estd;
     std::vector<int> v{};
 
-    estd::interface<func_1,func_2,func_3,func_4,func_5> i (MyImpl{});
-    estd::interface<func_1,func_2,func_3,func_4,func_5> i2 (MyImpl2{});
+    estd::interface<func_1,func_2> i (MyImpl{});
 
-    static_assert(std::is_same<decltype(i),decltype(i2)>::value ,"Oh shit...");
+    estd::interface<func_1, func_2> i2 = i;
 
-    double d = i.function_view<func_1>()(3,3.14);
-    int ret = i.function_view<func_2>()(std::ref(v));
+    //estd::interface<func_1,func_2,func_3,func_4,func_5> i2 (MyImpl2{});
 
-    std::cout << d << "   " << ret << std::endl;
-    std::cout << i2.function_view<func_1>()(3,3.14) << "   "
-            << i2.function_view<func_2>()(std::ref(v)) << std::endl;
+    //static_assert(std::is_same<decltype(i),decltype(i2)>::value ,"Oh shit...");
 
-    std::cout << v.size() << std::endl;
-
-    i2.function_view<func_3>()(std::ref(v),0);
-
-    std::string m = "MyName";
-    i.function_view<func_5>()(set_name_t{}, std::cref(m));
-    i2.function_view<func_5>()(set_name_t{}, std::cref(m));
-    std::cout << i.function_view<func_4>()(get_name_t{}) << std::endl;
-    std::cout << i2.function_view<func_4>()(get_name_t{}) << std::endl;
-    std::cout << v.size() << std::endl;
-
+    function_view<func_1>(i)(3,3.4);
     obj_storage o;
     o.allocate(4);
     return 0;

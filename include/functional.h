@@ -35,18 +35,33 @@ template<typename R,typename... Args,typename... F>
 struct IFunction<R(Args...),F...> : public IFunction<F...>{
     using IFunction<F...>::call_function__;
     virtual R call_function__(Args...) = 0;
+    
+    using MyT = IFunction<R(Args...), F...>;
+    MyT() = default;
+    MyT(const MyT&) = delete;
+    MyT& operator=(const MyT&) = delete;
+    MyT(MyT&&) = delete;
+    MyT& operator=(MyT&&) = delete;
+
 };
 
 template<typename R,typename... Args>
 struct IFunction<R(Args...)> {
     virtual R call_function__(Args...) = 0;
     virtual ~IFunction() = default;
+
+    using MyT = IFunction<R(Args...)>;
+    MyT() = default;
+    MyT(const MyT&) = delete;
+    MyT& operator=(const MyT&) = delete;
+    MyT(MyT&&) = delete;
+    MyT& operator=(MyT&&) = delete;
 };
 
 
 template<typename... F>
 struct IInterface : public IFunction<F...>{
-//    virtual IInterface* clone() = 0;
+    virtual IInterface* clone() const = 0;
 //    virtual IInterface* clone(IInterface* dest) = 0;
 };
 
@@ -56,40 +71,71 @@ struct Binder;
 template<typename IF,typename Impl,typename R,typename... Args,typename... F>
 struct Binder<IF,Impl,R(Args...),F...> : public Binder<IF,Impl,F...>{
 
-    Binder(const Impl& i) : Binder<IF,Impl,F...>(i){}
+    using MyT = Binder<IF, Impl, R(Args...), F...>;
+    using MyBase = Binder<IF, Impl, F...>;
+
+    MyT(const Impl& i) : MyBase{ i } {}
+    MyT(const MyT& b) : MyBase{ b } {}
 
     R call_function__(Args... args) override{
         return this->Impl::operator()(args...);
     }
+
 };
 
 template<typename IF,typename Impl,typename... Args,typename... F>
 struct Binder<IF,Impl,void(Args...),F...> : public Binder<IF,Impl,F...>{
 
-    Binder(const Impl& i) : Binder<IF,Impl,F...>(i){}
+    using MyT = Binder<IF, Impl, void(Args...), F...>;
+    using MyBase = Binder<IF, Impl, F...>;
+
+    MyT(const Impl& i) : MyBase{ i } {}
+    MyT(const MyT& b) : MyBase{ b } {}
 
     void call_function__(Args... args) override{
        this->Impl::operator()(args...);
     }
+
 };
 
 template<typename IF,typename Impl,typename R,typename... Args>
-struct Binder<IF,Impl,R(Args...)> : public IF, protected Impl {
+struct Binder<IF,Impl,R(Args...)> : public IF, public Impl {
 
-    Binder(const Impl& i) : Impl(i){}
+    using MyT = Binder<IF, Impl, R(Args...)>;
+    using MyBase = Impl;
+
+    MyT(const Impl& i) : MyBase{ i } {}
+    MyT(const MyT& b) : MyBase{ b } {}
 
     R call_function__(Args... args) override {
         return this->Impl::operator()(args...);
     }
+
 };
 
 template<typename IF,typename Impl,typename... Args>
-struct Binder<IF,Impl,void(Args...)> : public IF, protected Impl {
+struct Binder<IF,Impl,void(Args...)> : public IF, public Impl {
 
-    Binder(const Impl& i) : Impl(i){}
+    using MyT = Binder<IF, Impl, void(Args...)>;
+    using MyBase = Impl;
+
+    MyT(const Impl& i) : MyBase{ i } {}
+    MyT(const MyT& b) : MyBase{ b } {}
 
     void call_function__(Args... args) override {
         this->Impl::operator()(args...);
+    }
+};
+
+
+template<typename IF, typename Impl, typename... F>
+struct BindImpl : public Binder<IF, Impl, F...> {
+    BindImpl(const Impl&i) : Binder<IF, Impl, F...>(i) {}
+    BindImpl(const BindImpl& b) : Binder<IF, Impl, F...>(b) {}
+
+    BindImpl* clone() const override
+    {
+        return new BindImpl(*this);
     }
 };
 } // namespace impl
@@ -123,19 +169,21 @@ private:
     IF& i;
 };
 
+template<typename F, typename IF>
+function_view_t<IF, F> function_view(IF& i) {
+    return function_view_t<IF, F>(i);
+}
+
 // TODO(fecjanky): Add Small Object Optimization
-// TODO(fecjanky): Add Copy constructor for interface (clone() function...)
 template<typename... Fs>
 struct interface{
-
-
 
     using if_t = impl::IInterface<Fs...>;
 
     template<
         typename T,
         typename = std::enable_if_t< !std::is_base_of<interface,T>::value >
-    > interface(const T& t) : impl{new impl::Binder<if_t,T,Fs...>(t)} {
+    > interface(const T& t) : impl{new impl::BindImpl<if_t,T,Fs...>(t)} {
     }
 
     template<typename R,typename... Args>
@@ -155,10 +203,15 @@ struct interface{
         impl->call_function__(args...);
     }
 
-    // Copying not supported yet
-    interface(const interface&& i)  = delete;
-    // Copying assignmentnot supported yet
-    interface& operator = (const interface&& i) = delete;
+    interface(const interface& i) : impl { i.impl ? i.impl->clone() : nullptr }{}
+
+    interface& operator = (const interface& i) {
+        if (this != &rhs) {
+            delete impl;
+            impl = i.impl ? i.impl->clone() : nullptr;
+        }
+        return *this;
+    }
 
     interface(interface&& i) noexcept : impl{nullptr} {
         std::swap(impl,i.impl);
@@ -168,11 +221,6 @@ struct interface{
         if(this != & rhs)
             std::swap(impl,rhs.impl);
         return *this;
-    }
-
-    template<typename F>
-    function_view_t<interface,F> function_view() noexcept{
-        return function_view_t<interface,F>(*this);
     }
 
     ~interface(){
