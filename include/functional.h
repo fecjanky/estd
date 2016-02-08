@@ -106,7 +106,9 @@ struct Binder<IF,Impl,R(Args...),F...> : public Binder<IF,Impl,F...>{
     using MyBase = Binder<IF, Impl, F...>;
 
     MyT(const Impl& i) : MyBase{ i } {}
+    MyT(Impl&& i) : MyBase{ std::move(i) } {}
     MyT(const MyT& b) : MyBase{ b } {}
+    MyT(MyT&& b) : MyBase{ std::move(b) } {}
 
     R call_function__(Args... args) override{
         return this->Impl::operator()(std::forward<Args>(args)...);
@@ -121,7 +123,9 @@ struct Binder<IF,Impl,void(Args...),F...> : public Binder<IF,Impl,F...>{
     using MyBase = Binder<IF, Impl, F...>;
 
     MyT(const Impl& i) : MyBase{ i } {}
+    MyT(Impl&& i) : MyBase{ std::move(i) } {}
     MyT(const MyT& b) : MyBase{ b } {}
+    MyT(MyT&& b) : MyBase{ std::move(b) } {}
 
     void call_function__(Args... args) override{
        this->Impl::operator()(std::forward<Args>(args)...);
@@ -136,7 +140,9 @@ struct Binder<IF,Impl,R(Args...)> : public IF, public Impl {
     using MyBase = Impl;
 
     MyT(const Impl& i) : MyBase{ i } {}
+    MyT(Impl&& i) : MyBase{ std::move(i) } {}
     MyT(const MyT& b) : MyBase{ b } {}
+    MyT(MyT&& b) : MyBase{ std::move(b) } {}
 
     R call_function__(Args... args) override {
         return this->Impl::operator()(std::forward<Args>(args)...);
@@ -151,7 +157,9 @@ struct Binder<IF,Impl,void(Args...)> : public IF, public Impl {
     using MyBase = Impl;
 
     MyT(const Impl& i) : MyBase{ i } {}
+    MyT(Impl&& i) : MyBase{ std::move(i) } {}
     MyT(const MyT& b) : MyBase{ b } {}
+    MyT(MyT&& b) : MyBase{ std::move(b) } {}
 
     void call_function__(Args... args) override {
         this->Impl::operator()(std::forward<Args>(args)...);
@@ -162,7 +170,9 @@ struct Binder<IF,Impl,void(Args...)> : public IF, public Impl {
 template<typename IF, typename Impl, typename... F>
 struct BindImpl : public Binder<IF, Impl, F...> {
     BindImpl(const Impl&i) : Binder<IF, Impl, F...>(i) {}
+    BindImpl(Impl&&i) : Binder<IF, Impl, F...>(std::move(i)) {}
     BindImpl(const BindImpl& b) : Binder<IF, Impl, F...>(b) {}
+    BindImpl(BindImpl&& b) : Binder<IF, Impl, F...>(std::move(b)) {}
 
     BindImpl* clone_implementation__() const override
     {
@@ -171,7 +181,7 @@ struct BindImpl : public Binder<IF, Impl, F...> {
 
     BindImpl* clone_implementation__(void* dest) const override
     {
-        return new (dest) BindImpl(*this);
+        return new (static_cast<BindImpl*>(dest)) BindImpl(*this);
     }
 
 };
@@ -226,8 +236,11 @@ struct interface{
 
     template<
         typename T,
-        typename = std::enable_if_t< !std::is_base_of<interface,T>::value >
-    > explicit interface(const T& t) : impl_{impl::BindImpl<if_t,T,Fs...>(t)} {
+        typename = std::enable_if_t< 
+                !std::is_base_of<interface,std::decay_t<T>>::value >
+    > explicit interface(T&& t) : 
+        impl_{impl::BindImpl<if_t,std::decay_t<T>,Fs...>(std::forward<T>(t))} 
+    {
     }
 
     template<typename R,typename... Args>
@@ -249,23 +262,11 @@ struct interface{
 
     interface(const interface& i) = default;
     interface& operator = (const interface& i) = default;
-
-    interface(interface&& i) noexcept : impl_ {} {
-        std::swap(impl_,i.impl_);
-    }
-
-    interface& operator= (interface&& rhs) noexcept{
-        if(this != & rhs)
-            std::swap(impl_,rhs.impl_);
-        return *this;
-    }
-
     ~interface() = default;
 
 private:
     void check(){
-        if (!impl_) throw std::runtime_error(
-                "Invocation on interface without implementation");
+        if (!impl_) throw std::bad_function_call{};
     }
 
     polymorphic_obj_storage_t<if_t,impl::IInterfaceCloningPolicy> impl_;

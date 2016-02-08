@@ -24,6 +24,7 @@
 #include <cstdint>
 #include <array>
 #include <memory>
+#include <cstddef>
 
 namespace estd {
 
@@ -59,7 +60,7 @@ namespace impl {
 
 template<
     size_t max_size_in_ptr_size = 4,
-    size_t align = alignof(double),
+    size_t align = alignof(std::max_align_t),
     class Allocator = std::allocator<uint8_t>
 >
 class obj_storage_t : private std::allocator_traits<Allocator>::template rebind_alloc<uint8_t> {
@@ -93,7 +94,7 @@ public:
     void* allocate(size_t n){
         n = n == 0 ? 1 : n;
         allocation_check();
-        if(n < max_size)
+        if(n <= max_size)
             return allocate_inline(n);
         else
             return allocate_on_heap(n);
@@ -124,7 +125,7 @@ public:
 
     template<size_t N>
     static constexpr bool is_alignment_ok() {
-        return N < alignment && impl::is_power_of<2, N>::value;
+        return N <= alignment && impl::is_power_of<2, N>::value;
     }
 
 private:
@@ -147,10 +148,7 @@ private:
     }
 
     static void* aligned_heap_addr(uint8_t* ptr){
-        if(reinterpret_cast<uintptr_t>(ptr) % alignment)
             return ptr + reinterpret_cast<uintptr_t>(ptr) % alignment;
-        else
-            return ptr;
     }
 
     ///////////////
@@ -169,30 +167,34 @@ template<
     class IF,
     typename CloningPolicy = impl::DefaultCloningPolicy,
     size_t max_size_in_ptr_size = 4,
-    size_t align = alignof(double),
+    size_t align = alignof(std::max_align_t),
 class Allocator = std::allocator<uint8_t>
 >
 class polymorphic_obj_storage_t {
 public:
     static_assert(std::is_polymorphic<IF>::value, "IF class is not polymorphic");
-    
+
     template<
         typename T, 
         typename = std::enable_if_t < std::is_base_of<IF,std::decay_t<T>>::value >
-    > polymorphic_obj_storage_t(T&& t) : storage{sizeof(T)} {
-        static_assert(storage_t::is_alignment_ok<alignof(std::decay_t<T>)>(), "T is not properly aligned");
-
-        // TODO(fecjanky): look after whether this check is necessary
-        if ((static_cast<IF*>(nullptr) - static_cast<IF*>(static_cast<T*>(nullptr))) != 0)
-            throw std::runtime_error("polymorphic_obj_storage_t alignment error");
-
-        new (storage.get()) T(std::forward<T>(t));
+    > polymorphic_obj_storage_t(T&& t) : 
+        storage{sizeof(T)} ,
+        obj{ new (static_cast<std::decay_t<T>*>(storage.get())) 
+                std::decay_t<T>(std::forward<T>(t)) } 
+    {
+        static_assert(
+            storage_t::is_alignment_ok<alignof(std::decay_t<T>)>(),
+            "T is not properly aligned");
     }
 
-    polymorphic_obj_storage_t() : storage{}{}
+    polymorphic_obj_storage_t() : storage{}, obj{} 
+    {
+    }
 
-    polymorphic_obj_storage_t(const polymorphic_obj_storage_t& rhs) : storage{rhs.storage} {
-        CloningPolicy::Clone(rhs.get(), storage.get());
+    polymorphic_obj_storage_t(const polymorphic_obj_storage_t& rhs) : 
+        storage{rhs.storage},
+        obj { CloningPolicy::Clone(rhs.get(), storage.get())} 
+    {
     }
 
     polymorphic_obj_storage_t& operator=(const polymorphic_obj_storage_t& rhs) 
@@ -200,7 +202,7 @@ public:
         if (this != &rhs) {
             destroy();
             storage = rhs.storage;
-            CloningPolicy::Clone(rhs.get(),storage.get());
+            obj = CloningPolicy::Clone(rhs.get(),storage.get());
         }
         return *this;
     }
@@ -212,34 +214,41 @@ public:
 
 
     IF* get() {
-        return reinterpret_cast<IF*>(storage.get());
+        return obj;
     }
 
     const IF* get() const {
-        return reinterpret_cast<const IF*>(storage.get());
+        return obj;
     }
 
     operator bool()const
     {
-        return storage;
+        return obj != nullptr;
     }
 
     IF* operator->() {
-        return storage ? get() : nullptr;
+        return obj;
     }
 
     const IF* operator->() const {
-        return storage ? get() : nullptr;
+        return obj;
     }
 
 private:
     void destroy() {
-        if (storage)
-            get()->~IF();
+        if (obj)
+            obj->~IF();
+        obj = nullptr;
     }
 
-    using storage_t = obj_storage_t<max_size_in_ptr_size, align, Allocator>;
+    using storage_t = obj_storage_t<
+        max_size_in_ptr_size < 2 ? 1 : max_size_in_ptr_size - 1,
+        align,
+        Allocator
+    >;
+
     storage_t storage;
+    IF* obj;
 };
 
 template<typename IF>

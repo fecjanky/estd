@@ -97,7 +97,6 @@ int main() {
     my_if i2 = i;
 
     //estd::interface<func_1,func_2,func_3,func_4,func_5> i2 (MyImpl2{});
-
     //static_assert(std::is_same<decltype(i),decltype(i2)>::value ,"Oh shit...");
     std::string s = "hello";
     //std::reference_wrapper<std::string&&> sr(std::move(s));
