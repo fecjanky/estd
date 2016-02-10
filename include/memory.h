@@ -176,7 +176,8 @@ private:
     void* allocate_on_heap(size_t n){
         // allocating +alignment bytes to be able to
         // align heap storage as well
-        heap_storage = static_cast<uint8_t*>(this->allocate(n+alignment));
+        heap_storage = static_cast<uint8_t*>(this->MyAllocator::allocate(n+alignment));
+        size_ = n;
         return aligned_heap_addr(heap_storage);
     }
 

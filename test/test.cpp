@@ -56,6 +56,7 @@ struct MyImpl {
         auto ss = std::move(s);
     }
 
+    std::array<double, 8> a;
 };
 
 struct MyImpl2{
