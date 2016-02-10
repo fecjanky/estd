@@ -58,6 +58,9 @@ namespace impl {
 
 }
 
+// TODO(fecjanky): Add allocator_base class
+// TODO(fecjanky): add support for allocator constructor
+
 template<
     size_t max_size_in_ptr_size = 4,
     size_t align = alignof(std::max_align_t),
@@ -65,7 +68,7 @@ template<
 >
 class obj_storage_t : private std::allocator_traits<Allocator>::template rebind_alloc<uint8_t> {
 public:
-    static constexpr size_t max_size =
+    static constexpr size_t max_size_ =
             max_size_in_ptr_size < 1 ?
                     sizeof(void*) : max_size_in_ptr_size * sizeof(void*);
     static constexpr size_t alignment = align;
@@ -73,37 +76,62 @@ public:
 
     using MyAllocator = typename std::allocator_traits<Allocator>::template rebind_alloc<uint8_t>;
 
-    obj_storage_t():storage{},size{}{}
+    obj_storage_t():storage{},size_{}{}
 
-    explicit obj_storage_t(size_t n):storage{},size{}{
+    explicit obj_storage_t(size_t n):storage{},size_{}{
         allocate(n);
     }
 
-    obj_storage_t(const obj_storage_t& rhs) : storage{},size {} {
-        if (rhs.size && rhs.size <= max_size)
-            allocate_inline(rhs.size);
-        else if(rhs.size)
-            allocate_on_heap(rhs.size);
+    obj_storage_t(const obj_storage_t& rhs) : storage{},size_ {} {
+        if (rhs.size_ > 0)
+            allocate(rhs.size_);
     }
 
-    obj_storage_t& operator= (const obj_storage_t& rhs) {
-        deallocate();
-        if (rhs.size > 0) allocate(rhs.size);
+    obj_storage_t(obj_storage_t&& rhs) noexcept 
+        : storage{}, heap_storage{}, size_{ }
+    {
+        std::swap(size,rhs.size);
+        if (size_ > max_size_)
+            std::swap(heap_storage, rhs.heap_storage);
     }
+
+
+    obj_storage_t& operator= (const obj_storage_t& rhs) 
+    {
+        if (this != &rhs) {
+            deallocate();
+            if (rhs.size_ > 0) allocate(rhs.size_);
+        }
+        return *this;
+    }
+
+    obj_storage_t& operator= (obj_storage_t&& rhs) noexcept
+    {
+        if (this != &rhs) {
+            deallocate();
+            std::swap(size_, rhs.size_);
+            if (size_ > max_size_)
+                std::swap(heap_storage, rhs.heap_storage);
+        }
+        return *this;
+    }
+
 
     void* allocate(size_t n){
         n = n == 0 ? 1 : n;
         allocation_check();
-        if(n <= max_size)
+        if(n <= max_size_)
             return allocate_inline(n);
         else
             return allocate_on_heap(n);
     }
 
-    void deallocate(){
-        if(size > max_size)
-            this->MyAllocator::deallocate(heap_storage,size);
-        size = 0;
+    void deallocate() noexcept {
+        if (size_ > max_size_) {
+            this->MyAllocator::deallocate(heap_storage, size_);
+            heap_storage = nullptr;
+        }
+        size_ = 0;
     }
 
     ~obj_storage_t(){
@@ -111,13 +139,23 @@ public:
     }
 
     operator bool ()const{
-        return size != 0;
+        return size_ != 0;
     }
 
-    void* get() const {
-        if(size == 0)
+    size_t size()const noexcept
+    {
+        return size_;
+    }
+
+    static constexpr size_t max_size()
+    {
+        return max_size_;
+    }
+
+    void* get() {
+        if(size_ == 0)
             throw std::runtime_error("accessing unallocated storage");
-        else if(size>max_size)
+        else if(size_>max_size_)
             return aligned_heap_addr(heap_storage);
         else
             return &*storage.begin();
@@ -131,7 +169,7 @@ public:
 private:
 
     void* allocate_inline(size_t n){
-        size = n;
+        size_ = n;
         return &*storage.begin();
     }
 
@@ -143,7 +181,7 @@ private:
     }
 
     void allocation_check(){
-        if(size != 0)
+        if(size_ != 0)
             throw std::bad_alloc{};
     }
 
@@ -153,12 +191,12 @@ private:
 
     ///////////////
 
-     union alignas(alignment) {
-         mutable std::array<std::uint8_t,max_size> storage;
-         mutable std::uint8_t* heap_storage;
+    union alignas(alignment) {
+        std::array<std::uint8_t,max_size_> storage;
+        std::uint8_t* heap_storage;
     };
 
-    size_t size;
+    size_t size_;
 };
 
 using obj_storage = obj_storage_t<>;
@@ -197,12 +235,28 @@ public:
     {
     }
 
+    polymorphic_obj_storage_t(polymorphic_obj_storage_t&& rhs) :
+        storage{}, obj{}
+    {
+        move_object(std::move(rhs));
+    }
+
+
     polymorphic_obj_storage_t& operator=(const polymorphic_obj_storage_t& rhs) 
     {
         if (this != &rhs) {
             destroy();
             storage = rhs.storage;
             obj = CloningPolicy::Clone(rhs.get(),storage.get());
+        }
+        return *this;
+    }
+
+    polymorphic_obj_storage_t& operator=(polymorphic_obj_storage_t&& rhs)
+    {
+        if (this != &rhs) {
+            destroy();
+            move_object(std::move(rhs));
         }
         return *this;
     }
@@ -235,10 +289,30 @@ public:
     }
 
 private:
-    void destroy() {
+    void destroy()  noexcept 
+    {
         if (obj)
             obj->~IF();
         obj = nullptr;
+    }
+
+    // Can't guarantee that Cloning policy is noexcept...
+    void move_object(polymorphic_obj_storage_t && rhs)
+    {
+        // savig rhs obj ptr for potential inline copy
+        auto p = rhs.get();
+        storage = std::move(rhs.storage);
+        obj = nullptr;
+        if (storage.size() <= storage.max_size()) {
+            // using previously saved obj ptr
+            // for cloning reference
+            obj = CloningPolicy::Clone(p, storage.get());
+            rhs.obj = nullptr;
+        }
+        else {
+            // else use rhs obj ptr
+            std::swap(obj, rhs.obj);
+        }
     }
 
     using storage_t = obj_storage_t<

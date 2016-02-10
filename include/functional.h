@@ -262,6 +262,9 @@ struct interface{
 
     interface(const interface& i) = default;
     interface& operator = (const interface& i) = default;
+    interface(interface&& i) = default;
+    interface& operator = (interface&& i) = default;
+
     ~interface() = default;
 
 private:
