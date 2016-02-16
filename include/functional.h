@@ -60,12 +60,12 @@ struct IFunction<R(Args...),F...> : public IFunction<F...>{
     using IFunction<F...>::call_function__;
     virtual R call_function__(Args...) = 0;
     
-    using MyT = IFunction<R(Args...), F...>;
-    MyT() = default;
-    MyT(const MyT&) = delete;
-    MyT& operator=(const MyT&) = delete;
-    MyT(MyT&&) = delete;
-    MyT& operator=(MyT&&) = delete;
+    IFunction() = default;
+    IFunction(const IFunction&) = delete;
+    IFunction& operator=(const IFunction&) = delete;
+    IFunction(IFunction&&) = delete;
+    IFunction& operator=(IFunction&&) = delete;
+    virtual ~IFunction() = default;
 
 };
 
@@ -74,12 +74,11 @@ struct IFunction<R(Args...)> {
     virtual R call_function__(Args...) = 0;
     virtual ~IFunction() = default;
 
-    using MyT = IFunction<R(Args...)>;
-    MyT() = default;
-    MyT(const MyT&) = delete;
-    MyT& operator=(const MyT&) = delete;
-    MyT(MyT&&) = delete;
-    MyT& operator=(MyT&&) = delete;
+    IFunction() = default;
+    IFunction(const IFunction&) = delete;
+    IFunction& operator=(const IFunction&) = delete;
+    IFunction(IFunction&&) = delete;
+    IFunction& operator=(IFunction&&) = delete;
 };
 
 
@@ -87,6 +86,7 @@ template<typename... F>
 struct IInterface : public IFunction<F...>{
     virtual IInterface* clone_implementation__() const = 0;
     virtual IInterface* clone_implementation__(void* dest) const = 0;
+    virtual ~IInterface() = default;
 };
 
 struct IInterfaceCloningPolicy {
@@ -102,13 +102,10 @@ struct Binder;
 template<typename IF,typename Impl,typename R,typename... Args,typename... F>
 struct Binder<IF,Impl,R(Args...),F...> : public Binder<IF,Impl,F...>{
 
-    using MyT = Binder<IF, Impl, R(Args...), F...>;
-    using MyBase = Binder<IF, Impl, F...>;
-
-    MyT(const Impl& i) : MyBase{ i } {}
-    MyT(Impl&& i) : MyBase{ std::move(i) } {}
-    MyT(const MyT& b) : MyBase{ b } {}
-    MyT(MyT&& b) : MyBase{ std::move(b) } {}
+    Binder(const Impl& i) : Binder<IF,Impl,F...>{ i } {}
+    Binder(Impl&& i) : Binder<IF,Impl,F...>{ std::move(i) } {}
+    Binder(const Binder& b) : Binder<IF,Impl,F...>{ b } {}
+    Binder(Binder&& b) : Binder<IF,Impl,F...>{ std::move(b) } {}
 
     R call_function__(Args... args) override{
         return this->Impl::operator()(std::forward<Args>(args)...);
@@ -119,13 +116,10 @@ struct Binder<IF,Impl,R(Args...),F...> : public Binder<IF,Impl,F...>{
 template<typename IF,typename Impl,typename... Args,typename... F>
 struct Binder<IF,Impl,void(Args...),F...> : public Binder<IF,Impl,F...>{
 
-    using MyT = Binder<IF, Impl, void(Args...), F...>;
-    using MyBase = Binder<IF, Impl, F...>;
-
-    MyT(const Impl& i) : MyBase{ i } {}
-    MyT(Impl&& i) : MyBase{ std::move(i) } {}
-    MyT(const MyT& b) : MyBase{ b } {}
-    MyT(MyT&& b) : MyBase{ std::move(b) } {}
+    Binder(const Impl& i) : Binder<IF,Impl,F...>{ i } {}
+    Binder(Impl&& i) : Binder<IF,Impl,F...>{ std::move(i) } {}
+    Binder(const Binder& b) : Binder<IF,Impl,F...>{ b } {}
+    Binder(Binder&& b) : Binder<IF,Impl,F...>{ std::move(b) } {}
 
     void call_function__(Args... args) override{
        this->Impl::operator()(std::forward<Args>(args)...);
@@ -134,15 +128,12 @@ struct Binder<IF,Impl,void(Args...),F...> : public Binder<IF,Impl,F...>{
 };
 
 template<typename IF,typename Impl,typename R,typename... Args>
-struct Binder<IF,Impl,R(Args...)> : public IF, public Impl {
+struct Binder<IF,Impl,R(Args...)> : public IF, protected Impl {
 
-    using MyT = Binder<IF, Impl, R(Args...)>;
-    using MyBase = Impl;
-
-    MyT(const Impl& i) : MyBase{ i } {}
-    MyT(Impl&& i) : MyBase{ std::move(i) } {}
-    MyT(const MyT& b) : MyBase{ b } {}
-    MyT(MyT&& b) : MyBase{ std::move(b) } {}
+    Binder(const Impl& i) : Impl(i) {}
+    Binder(Impl&& i) : Impl(std::move(i)) {}
+    Binder(const Binder& b) : Impl(b) {}
+    Binder(Binder&& b) : Impl(std::move(b)) {}
 
     R call_function__(Args... args) override {
         return this->Impl::operator()(std::forward<Args>(args)...);
@@ -151,15 +142,12 @@ struct Binder<IF,Impl,R(Args...)> : public IF, public Impl {
 };
 
 template<typename IF,typename Impl,typename... Args>
-struct Binder<IF,Impl,void(Args...)> : public IF, public Impl {
+struct Binder<IF,Impl,void(Args...)> : public IF, protected Impl {
 
-    using MyT = Binder<IF, Impl, void(Args...)>;
-    using MyBase = Impl;
-
-    MyT(const Impl& i) : MyBase{ i } {}
-    MyT(Impl&& i) : MyBase{ std::move(i) } {}
-    MyT(const MyT& b) : MyBase{ b } {}
-    MyT(MyT&& b) : MyBase{ std::move(b) } {}
+    Binder(const Impl& i) : Impl( i ) {}
+    Binder(Impl&& i) : Impl(std::move(i)) {}
+    Binder(const Binder& b) : Impl( b ) {}
+    Binder(Binder&& b) : Impl( std::move(b) ) {}
 
     void call_function__(Args... args) override {
         this->Impl::operator()(std::forward<Args>(args)...);

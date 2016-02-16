@@ -56,6 +56,9 @@ namespace impl {
         }
     };
 
+    template<size_t N>
+    struct alignment_t{};
+
 }
 
 // TODO(fecjanky): Add allocator_base class
@@ -162,7 +165,7 @@ public:
     }
 
     template<size_t N>
-    static constexpr bool is_alignment_ok() {
+    static constexpr bool is_alignment_ok(const impl::alignment_t<N>&) {
         return N <= alignment && impl::is_power_of<2, N>::value;
     }
 
@@ -211,6 +214,12 @@ class Allocator = std::allocator<uint8_t>
 >
 class polymorphic_obj_storage_t {
 public:
+    using storage_t = obj_storage_t<
+        max_size_in_ptr_size < 2 ? 1 : max_size_in_ptr_size - 1,
+        align,
+        Allocator
+    >;
+
     static_assert(std::is_polymorphic<IF>::value, "IF class is not polymorphic");
 
     template<
@@ -221,8 +230,8 @@ public:
         obj{ new (static_cast<std::decay_t<T>*>(storage.get())) 
                 std::decay_t<T>(std::forward<T>(t)) } 
     {
-        static_assert(
-            storage_t::is_alignment_ok<alignof(std::decay_t<T>)>(),
+        static_assert( storage_t::is_alignment_ok(
+                impl::alignment_t<alignof(std::decay_t<T>)>{}),
             "T is not properly aligned");
     }
 
@@ -315,12 +324,6 @@ private:
             std::swap(obj, rhs.obj);
         }
     }
-
-    using storage_t = obj_storage_t<
-        max_size_in_ptr_size < 2 ? 1 : max_size_in_ptr_size - 1,
-        align,
-        Allocator
-    >;
 
     storage_t storage;
     IF* obj;
