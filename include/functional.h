@@ -84,16 +84,23 @@ struct IFunction<R(Args...)> {
 
 template<typename... F>
 struct IInterface : public IFunction<F...>{
-    virtual IInterface* clone_implementation__() const = 0;
+
     virtual IInterface* clone_implementation__(void* dest) const = 0;
+    virtual IInterface* move_implementation__(void* dest) noexcept = 0;
     virtual ~IInterface() = default;
 };
 
 struct IInterfaceCloningPolicy {
-    template<typename T>
-    static T* Clone(const T* from, void* to) {
-        return from->clone_implementation__(to);
+    template<typename... F>
+    static IInterface<F...>* Clone(const IInterface<F...>& from, void* to) {
+            return from.clone_implementation__(to);
     }
+
+    template<typename... F>
+    static IInterface<F...>* Move(IInterface<F...>&& from, void* to) noexcept {
+        return from.move_implementation__(to);
+    }
+
 };
 
 template<typename IF,typename Impl,typename... F>
@@ -102,10 +109,10 @@ struct Binder;
 template<typename IF,typename Impl,typename R,typename... Args,typename... F>
 struct Binder<IF,Impl,R(Args...),F...> : public Binder<IF,Impl,F...>{
 
-    Binder(const Impl& i) : Binder<IF,Impl,F...>{ i } {}
-    Binder(Impl&& i) : Binder<IF,Impl,F...>{ std::move(i) } {}
-    Binder(const Binder& b) : Binder<IF,Impl,F...>{ b } {}
-    Binder(Binder&& b) : Binder<IF,Impl,F...>{ std::move(b) } {}
+    Binder(const Impl& i) : Binder<IF,Impl,F...>(i) {}
+    Binder(Impl&& i) : Binder<IF,Impl,F...>(std::move(i)) {}
+    Binder(const Binder& b) : Binder<IF,Impl,F...>(b) {}
+    Binder(Binder&& b) : Binder<IF,Impl,F...>(std::move(b)) {}
 
     R call_function__(Args... args) override{
         return this->Impl::operator()(std::forward<Args>(args)...);
@@ -116,10 +123,10 @@ struct Binder<IF,Impl,R(Args...),F...> : public Binder<IF,Impl,F...>{
 template<typename IF,typename Impl,typename... Args,typename... F>
 struct Binder<IF,Impl,void(Args...),F...> : public Binder<IF,Impl,F...>{
 
-    Binder(const Impl& i) : Binder<IF,Impl,F...>{ i } {}
-    Binder(Impl&& i) : Binder<IF,Impl,F...>{ std::move(i) } {}
-    Binder(const Binder& b) : Binder<IF,Impl,F...>{ b } {}
-    Binder(Binder&& b) : Binder<IF,Impl,F...>{ std::move(b) } {}
+    Binder(const Impl& i) : Binder<IF,Impl,F...>(i) {}
+    Binder(Impl&& i) : Binder<IF,Impl,F...>(std::move(i)) {}
+    Binder(const Binder& b) : Binder<IF,Impl,F...>(b) {}
+    Binder(Binder&& b) : Binder<IF,Impl,F...>(std::move(b)) {}
 
     void call_function__(Args... args) override{
        this->Impl::operator()(std::forward<Args>(args)...);
@@ -162,15 +169,18 @@ struct BindImpl : public Binder<IF, Impl, F...> {
     BindImpl(const BindImpl& b) : Binder<IF, Impl, F...>(b) {}
     BindImpl(BindImpl&& b) : Binder<IF, Impl, F...>(std::move(b)) {}
 
-    BindImpl* clone_implementation__() const override
-    {
-        return new BindImpl(*this);
-    }
-
     BindImpl* clone_implementation__(void* dest) const override
     {
-        return new (static_cast<BindImpl*>(dest)) BindImpl(*this);
+        return new (reinterpret_cast<BindImpl*>(dest))
+            BindImpl(*this);
     }
+
+    BindImpl* move_implementation__(void* dest) noexcept override
+    {
+        return new (reinterpret_cast<BindImpl*>(dest))
+            BindImpl(std::move(*this));
+    }
+
 
 };
 } // namespace impl

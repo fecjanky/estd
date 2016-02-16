@@ -51,8 +51,13 @@ namespace impl {
 
     struct DefaultCloningPolicy {
         template<typename T>
-        static T* Clone(const T* from, void* to) {
-            return from->clone(to);
+        static T* Clone(const T& from, void* to) {
+            return from.clone(to);
+        }
+
+        template<typename T,typename = std::enable_if_t<!std::is_lvalue_reference<T>::value>>
+        static T* Move(T&& from, void* to) {
+            return from.move(to);
         }
     };
 
@@ -61,77 +66,103 @@ namespace impl {
 
 }
 
-// TODO(fecjanky): Add allocator_base class
-// TODO(fecjanky): add support for allocator constructor
-
 template<
-    size_t max_size_in_ptr_size = 4,
-    size_t align = alignof(std::max_align_t),
-    class Allocator = std::allocator<uint8_t>
+    size_t storage_size = 4,
+    size_t alignment = alignof(std::max_align_t),
+    template <typename> class Allocator = std::allocator
 >
-class obj_storage_t : private std::allocator_traits<Allocator>::template rebind_alloc<uint8_t> {
+class obj_storage_t : private Allocator<uint8_t> {
 public:
     static constexpr size_t max_size_ =
-            max_size_in_ptr_size < 1 ?
-                    sizeof(void*) : max_size_in_ptr_size * sizeof(void*);
-    static constexpr size_t alignment = align;
+        storage_size < 1 ? sizeof(void*) : storage_size * sizeof(void*);
     static_assert(impl::is_power_of<2,alignment>::value,"alignment is not a power of 2");
 
-    using MyAllocator = typename std::allocator_traits<Allocator>::template rebind_alloc<uint8_t>;
+    using allocator_type = Allocator<uint8_t>;
+    using allocator_traits = std::allocator_traits<allocator_type>;
 
-    obj_storage_t():storage{},size_{}{}
+    obj_storage_t() : storage{},size_{}{}
 
-    explicit obj_storage_t(size_t n):storage{},size_{}{
+    template<
+        typename A,
+        typename = std::enable_if_t<
+            !std::is_base_of<obj_storage_t,A>::value &&
+            std::is_constructible<allocator_type,A>::value>
+    > obj_storage_t(A&& a)
+        : Allocator<uint8_t>(std::forward<A>(a)), storage{},size_{}{}
+
+    explicit obj_storage_t(size_t n) : storage{},size_{}{
         allocate(n);
     }
 
-    obj_storage_t(const obj_storage_t& rhs) : storage{},size_ {} {
+    obj_storage_t(const obj_storage_t& rhs)
+        : Allocator<uint8_t>(allocator_traits::select_on_container_copy_construction(rhs)),
+          storage{},size_ {}
+    {
         if (rhs.size_ > 0)
             allocate(rhs.size_);
     }
 
     obj_storage_t(obj_storage_t&& rhs) noexcept 
-        : storage{}, heap_storage{}, size_{ }
+        : Allocator<uint8_t>(std::move(rhs)),storage{}, heap_storage{}, size_{}
     {
-        std::swap(size,rhs.size);
-        if (size_ > max_size_)
-            std::swap(heap_storage, rhs.heap_storage);
+        swap_with_rvalue(std::move(rhs));
     }
 
 
     obj_storage_t& operator= (const obj_storage_t& rhs) 
     {
         if (this != &rhs) {
+            // deallocate with old allocator
+            // TODO(fecjanky): consider keeping allocated heap 
+            // storage instead of deallocation, 
+            // maybe add template policy for greater flexibility
             deallocate();
+            // copy rhs allocator if required
+            if (typename allocator_traits::propagate_on_container_copy_assignment{})
+                static_cast<allocator_type>(*this) = rhs;
             if (rhs.size_ > 0) allocate(rhs.size_);
         }
         return *this;
     }
 
-    obj_storage_t& operator= (obj_storage_t&& rhs) noexcept
+    obj_storage_t& operator= (obj_storage_t&& rhs) 
+        noexcept(typename allocator_traits::propagate_on_container_move_assignment::value)
     {
         if (this != &rhs) {
             deallocate();
-            std::swap(size_, rhs.size_);
-            if (size_ > max_size_)
-                std::swap(heap_storage, rhs.heap_storage);
+            // if propagation we can take ownernship of
+            // allocated resource
+            if(typename allocator_traits::propagate_on_container_move_assignment::value) {
+                swap_with_rvalue(std::move(rhs));
+                static_cast<allocator_type>(*this) = std::move(rhs);
+            } else {
+                // can obtain storage only if allocators compare to equal
+                if(static_cast<allocator_type>(*this) == rhs){
+                    swap_with_rvalue(std::move(rhs));
+                } else {
+                    // need to reallocate with this allocator if not equal
+                    allocate(rhs.size_);
+                }
+            }
         }
         return *this;
     }
 
 
-    void* allocate(size_t n){
-        n = n == 0 ? 1 : n;
+    void* allocate(size_t n)
+    {
         allocation_check();
+        n = n == 0 ? 1 : n;
         if(n <= max_size_)
             return allocate_inline(n);
         else
             return allocate_on_heap(n);
     }
 
-    void deallocate() noexcept {
+    void deallocate() noexcept 
+    {
         if (size_ > max_size_) {
-            this->MyAllocator::deallocate(heap_storage, size_);
+            this->allocator_type::deallocate(heap_storage, size_);
             heap_storage = nullptr;
         }
         size_ = 0;
@@ -155,23 +186,37 @@ public:
         return max_size_;
     }
 
-    void* get() {
+    void* get_checked() 
+    {
         if(size_ == 0)
             throw std::runtime_error("accessing unallocated storage");
-        else if(size_>max_size_)
+        else return get();
+    }
+
+    void* get() noexcept 
+    {
+        if (size_>max_size_)
             return aligned_heap_addr(heap_storage);
         else
             return &*storage.begin();
     }
 
+
     template<size_t N>
-    static constexpr bool is_alignment_ok(const impl::alignment_t<N>&) {
+    static constexpr bool is_alignment_ok(const impl::alignment_t<N>&) 
+    {
         return N <= alignment && impl::is_power_of<2, N>::value;
     }
 
+    allocator_type& get_allocator()const noexcept
+    {
+        return *this;
+    }
+
+
 private:
 
-    void* allocate_inline(size_t n){
+    void* allocate_inline(size_t n) noexcept{
         size_ = n;
         return &*storage.begin();
     }
@@ -179,8 +224,9 @@ private:
     void* allocate_on_heap(size_t n){
         // allocating +alignment bytes to be able to
         // align heap storage as well
-        heap_storage = static_cast<uint8_t*>(this->MyAllocator::allocate(n+alignment));
-        size_ = n;
+        auto alloc_size = n + alignment;
+        heap_storage = static_cast<uint8_t*>(this->allocator_type::allocate(alloc_size));
+        size_ = alloc_size;
         return aligned_heap_addr(heap_storage);
     }
 
@@ -193,6 +239,20 @@ private:
             return ptr + reinterpret_cast<uintptr_t>(ptr) % alignment;
     }
 
+    void swap_with_rvalue(obj_storage_t&& rhs) noexcept
+    {
+        // leave rhs as is if inline allocation happens
+        if (rhs.size() > 0 && rhs.size() <= max_size_) {
+            allocate_inline(rhs.size());
+        }
+        else if (rhs.size()) {
+            std::swap(size_, rhs.size_);
+            std::swap(heap_storage, rhs.heap_storage);
+        }
+    }
+
+    ///////////////
+    // Data members
     ///////////////
 
     union alignas(alignment) {
@@ -205,20 +265,31 @@ private:
 
 using obj_storage = obj_storage_t<>;
 
+template<size_t s,size_t a,template <typename> class A>
+bool operator==(const obj_storage_t<s,a,A>& lhs, const obj_storage_t<s,a,A>& rhs) noexcept
+{
+    return (!lhs && !rhs) || ((lhs && rhs) && (lhs.get() == rhs.get()));
+}
+
+template<size_t s, size_t a, template <typename> class A>
+bool operator!=(const obj_storage_t<s, a, A>& lhs, const obj_storage_t<s, a, A>& rhs) noexcept
+{
+    return !(lhs == rhs);
+}
+
 template<
     class IF,
     typename CloningPolicy = impl::DefaultCloningPolicy,
-    size_t max_size_in_ptr_size = 4,
-    size_t align = alignof(std::max_align_t),
-class Allocator = std::allocator<uint8_t>
+    size_t storage_size = 4, // in pointer size
+    size_t alignment = alignof(std::max_align_t),
+    template <typename> class Allocator = std::allocator
 >
 class polymorphic_obj_storage_t {
 public:
-    using storage_t = obj_storage_t<
-        max_size_in_ptr_size < 2 ? 1 : max_size_in_ptr_size - 1,
-        align,
-        Allocator
-    >;
+    using storage_t = obj_storage_t<storage_size, alignment,Allocator>;
+
+    using allocator_type = typename storage_t::allocator_type;
+    using allocator_traits = std::allocator_traits<allocator_type>;
 
     static_assert(std::is_polymorphic<IF>::value, "IF class is not polymorphic");
 
@@ -227,7 +298,7 @@ public:
         typename = std::enable_if_t < std::is_base_of<IF,std::decay_t<T>>::value >
     > polymorphic_obj_storage_t(T&& t) : 
         storage{sizeof(T)} ,
-        obj{ new (static_cast<std::decay_t<T>*>(storage.get())) 
+        obj{ new (static_cast<std::decay_t<T>*>(reinterpret_cast<IF*>(storage.get())))
                 std::decay_t<T>(std::forward<T>(t)) } 
     {
         static_assert( storage_t::is_alignment_ok(
@@ -241,14 +312,21 @@ public:
 
     polymorphic_obj_storage_t(const polymorphic_obj_storage_t& rhs) : 
         storage{rhs.storage},
-        obj { CloningPolicy::Clone(rhs.get(), storage.get())} 
+        obj { rhs.get() ? CloningPolicy::Clone(*rhs.get(), storage.get()) : nullptr } 
     {
     }
 
-    polymorphic_obj_storage_t(polymorphic_obj_storage_t&& rhs) :
-        storage{}, obj{}
+    polymorphic_obj_storage_t(polymorphic_obj_storage_t&& rhs) 
+        noexcept
+        : storage{std::move(rhs.storage)}, obj{rhs.obj}
     {
-        move_object(std::move(rhs));
+        // successful storage swap,
+        if (storage.size() > storage.max_size())
+            rhs.obj = nullptr;
+        // need to move object if inline allocation happened
+        // and rhs has an object
+        else if(rhs.get())
+            obj = CloningPolicy::Move(std::move(*rhs.get()), storage.get());
     }
 
 
@@ -257,12 +335,13 @@ public:
         if (this != &rhs) {
             destroy();
             storage = rhs.storage;
-            obj = CloningPolicy::Clone(rhs.get(),storage.get());
+            obj = rhs.get() ? CloningPolicy::Clone(*rhs.get(),storage.get()) : nullptr;
         }
         return *this;
     }
 
     polymorphic_obj_storage_t& operator=(polymorphic_obj_storage_t&& rhs)
+        noexcept(typename allocator_traits::propagate_on_container_move_assignment::value)
     {
         if (this != &rhs) {
             destroy();
@@ -298,6 +377,11 @@ public:
         return obj;
     }
 
+    allocator_type& get_allocator() const noexcept
+    {
+        return storage.get_allocator();
+    }
+
 private:
     void destroy()  noexcept 
     {
@@ -306,25 +390,40 @@ private:
         obj = nullptr;
     }
 
-    // Can't guarantee that Cloning policy is noexcept...
-    void move_object(polymorphic_obj_storage_t && rhs)
+    void cleanup() noexcept
     {
-        // savig rhs obj ptr for potential inline copy
-        auto p = rhs.get();
-        storage = std::move(rhs.storage);
-        obj = nullptr;
-        if (storage.size() <= storage.max_size()) {
-            // using previously saved obj ptr
-            // for cloning reference
-            obj = CloningPolicy::Clone(p, storage.get());
-            rhs.obj = nullptr;
-        }
-        else {
-            // else use rhs obj ptr
-            std::swap(obj, rhs.obj);
-        }
+        destroy();
+        storage.deallocate();
     }
 
+    void move_object(polymorphic_obj_storage_t && rhs) 
+        noexcept(typename allocator_traits::propagate_on_container_move_assignment::value)
+    {
+        // if no object in rhs, nothing to do
+        if (!rhs) return;
+        // for inline object inline allocation has to be made
+        if (rhs.storage.size() <= rhs.storage.max_size()) {
+            storage.allocate(rhs.storage.size());
+            obj = CloningPolicy::Move(std::move(*rhs.get()), storage.get());
+        }
+        else {
+            // store old storage for comparison
+            auto old_storage = rhs.storage.get();
+            storage = std::move(rhs.storage);
+            // if no reallocation happened, swap obj pointers
+            if (old_storage == storage.get()) {
+                obj = rhs.obj;
+                rhs.obj = nullptr;
+            }
+            // else move object to newly allocated storage
+            else {
+                obj = CloningPolicy::Move(std::move(*rhs.get()), storage.get());
+            }
+        }
+    }
+    //////////////////////////
+    ///// member variables
+    /////////////////////////
     storage_t storage;
     IF* obj;
 };
