@@ -29,37 +29,37 @@
 namespace estd {
 namespace impl {
 
-template<bool,typename T1,typename T2>
+template<bool, typename T1, typename T2>
 struct If {
     using type = T1;
 };
 
 template<typename T1, typename T2>
-struct If<false,T1,T2> {
+struct If<false, T1, T2> {
     using type = T2;
 };
 
 template<bool b, typename T1, typename T2>
 using If_t = typename If<b, T1, T2>::type;
 
-template<bool b,bool... B>
+template<bool b, bool ... B>
 struct And {
     static constexpr bool value = b && And<B...>::value;
 };
 
 template<bool b, bool B>
-struct And<b,B> {
+struct And<b, B> {
     static constexpr bool value = b && B;
 };
 
-template<typename... F>
+template<typename ... F>
 struct IFunction;
 
-template<typename R,typename... Args,typename... F>
-struct IFunction<R(Args...),F...> : public IFunction<F...>{
+template<typename R, typename ... Args, typename ... F>
+struct IFunction<R(Args...), F...> : public IFunction<F...> {
     using IFunction<F...>::call_function__;
     virtual R call_function__(Args...) = 0;
-    
+
     IFunction() = default;
     IFunction(const IFunction&) = delete;
     IFunction& operator=(const IFunction&) = delete;
@@ -69,7 +69,7 @@ struct IFunction<R(Args...),F...> : public IFunction<F...>{
 
 };
 
-template<typename R,typename... Args>
+template<typename R, typename ... Args>
 struct IFunction<R(Args...)> {
     virtual R call_function__(Args...) = 0;
     virtual ~IFunction() = default;
@@ -81,9 +81,8 @@ struct IFunction<R(Args...)> {
     IFunction& operator=(IFunction&&) = delete;
 };
 
-
-template<typename... F>
-struct IInterface : public IFunction<F...>{
+template<typename ... F>
+struct IInterface: public IFunction<F...> {
 
     virtual IInterface* clone_implementation__(void* dest) const = 0;
     virtual IInterface* move_implementation__(void* dest) noexcept = 0;
@@ -91,113 +90,181 @@ struct IInterface : public IFunction<F...>{
 };
 
 struct IInterfaceCloningPolicy {
-    template<typename... F>
-    static IInterface<F...>* Clone(const IInterface<F...>& from, void* to) {
-            return from.clone_implementation__(to);
+    template<typename ... F>
+    static IInterface<F...>* Clone(const IInterface<F...>& from, void* to)
+    {
+        return from.clone_implementation__(to);
     }
 
-    template<typename... F>
-    static IInterface<F...>* Move(IInterface<F...>&& from, void* to) noexcept {
+    template<typename ... F>
+    static IInterface<F...>* Move(IInterface<F...> && from, void* to) noexcept
+    {
         return from.move_implementation__(to);
     }
 
 };
 
-template<typename IF,typename Impl,typename... F>
+template<typename IF, typename Impl, typename ... F>
 struct Binder;
 
-template<typename IF,typename Impl,typename R,typename... Args,typename... F>
-struct Binder<IF,Impl,R(Args...),F...> : public Binder<IF,Impl,F...>{
+template<typename IF, typename Impl, typename R, typename ... Args,
+        typename ... F>
+struct Binder<IF, Impl, R(Args...), F...> : public Binder<IF, Impl, F...> {
 
-    Binder(const Impl& i) : Binder<IF,Impl,F...>(i) {}
-    Binder(Impl&& i) : Binder<IF,Impl,F...>(std::move(i)) {}
-    Binder(const Binder& b) : Binder<IF,Impl,F...>(b) {}
-    Binder(Binder&& b) : Binder<IF,Impl,F...>(std::move(b)) {}
+    Binder(const Impl& i) :
+            Binder<IF, Impl, F...>(i)
+    {
+    }
+    Binder(Impl&& i) :
+            Binder<IF, Impl, F...>(std::move(i))
+    {
+    }
+    Binder(const Binder& b) :
+            Binder<IF, Impl, F...>(b)
+    {
+    }
+    Binder(Binder&& b) :
+            Binder<IF, Impl, F...>(std::move(b))
+    {
+    }
 
-    R call_function__(Args... args) override{
+    R call_function__(Args ... args) override
+    {
         return this->Impl::operator()(std::forward<Args>(args)...);
     }
 
 };
 
-template<typename IF,typename Impl,typename... Args,typename... F>
-struct Binder<IF,Impl,void(Args...),F...> : public Binder<IF,Impl,F...>{
+template<typename IF, typename Impl, typename ... Args, typename ... F>
+struct Binder<IF, Impl, void(Args...), F...> : public Binder<IF, Impl, F...> {
 
-    Binder(const Impl& i) : Binder<IF,Impl,F...>(i) {}
-    Binder(Impl&& i) : Binder<IF,Impl,F...>(std::move(i)) {}
-    Binder(const Binder& b) : Binder<IF,Impl,F...>(b) {}
-    Binder(Binder&& b) : Binder<IF,Impl,F...>(std::move(b)) {}
+    Binder(const Impl& i) :
+            Binder<IF, Impl, F...>(i)
+    {
+    }
+    Binder(Impl&& i) :
+            Binder<IF, Impl, F...>(std::move(i))
+    {
+    }
+    Binder(const Binder& b) :
+            Binder<IF, Impl, F...>(b)
+    {
+    }
+    Binder(Binder&& b) :
+            Binder<IF, Impl, F...>(std::move(b))
+    {
+    }
 
-    void call_function__(Args... args) override{
-       this->Impl::operator()(std::forward<Args>(args)...);
+    void call_function__(Args ... args) override
+    {
+        this->Impl::operator()(std::forward<Args>(args)...);
     }
 
 };
 
-template<typename IF,typename Impl,typename R,typename... Args>
-struct Binder<IF,Impl,R(Args...)> : public IF, protected Impl {
+template<typename IF, typename Impl, typename R, typename ... Args>
+struct Binder<IF, Impl, R(Args...)> : public IF, protected Impl {
 
-    Binder(const Impl& i) : Impl(i) {}
-    Binder(Impl&& i) : Impl(std::move(i)) {}
-    Binder(const Binder& b) : Impl(b) {}
-    Binder(Binder&& b) : Impl(std::move(b)) {}
+    Binder(const Impl& i) :
+            Impl(i)
+    {
+    }
+    Binder(Impl&& i) :
+            Impl(std::move(i))
+    {
+    }
+    Binder(const Binder& b) :
+            Impl(b)
+    {
+    }
+    Binder(Binder&& b) :
+            Impl(std::move(b))
+    {
+    }
 
-    R call_function__(Args... args) override {
+    R call_function__(Args ... args) override
+    {
         return this->Impl::operator()(std::forward<Args>(args)...);
     }
 
 };
 
-template<typename IF,typename Impl,typename... Args>
-struct Binder<IF,Impl,void(Args...)> : public IF, protected Impl {
+template<typename IF, typename Impl, typename ... Args>
+struct Binder<IF, Impl, void(Args...)> : public IF, protected Impl {
 
-    Binder(const Impl& i) : Impl( i ) {}
-    Binder(Impl&& i) : Impl(std::move(i)) {}
-    Binder(const Binder& b) : Impl( b ) {}
-    Binder(Binder&& b) : Impl( std::move(b) ) {}
+    Binder(const Impl& i) :
+            Impl(i)
+    {
+    }
+    Binder(Impl&& i) :
+            Impl(std::move(i))
+    {
+    }
+    Binder(const Binder& b) :
+            Impl(b)
+    {
+    }
+    Binder(Binder&& b) :
+            Impl(std::move(b))
+    {
+    }
 
-    void call_function__(Args... args) override {
+    void call_function__(Args ... args) override
+    {
         this->Impl::operator()(std::forward<Args>(args)...);
     }
 };
 
-
-template<typename IF, typename Impl, typename... F>
-struct BindImpl : public Binder<IF, Impl, F...> {
-    BindImpl(const Impl&i) : Binder<IF, Impl, F...>(i) {}
-    BindImpl(Impl&&i) : Binder<IF, Impl, F...>(std::move(i)) {}
-    BindImpl(const BindImpl& b) : Binder<IF, Impl, F...>(b) {}
-    BindImpl(BindImpl&& b) : Binder<IF, Impl, F...>(std::move(b)) {}
+template<typename IF, typename Impl, typename ... F>
+struct BindImpl: public Binder<IF, Impl, F...> {
+    BindImpl(const Impl&i) :
+            Binder<IF, Impl, F...>(i)
+    {
+    }
+    BindImpl(Impl&&i) :
+            Binder<IF, Impl, F...>(std::move(i))
+    {
+    }
+    BindImpl(const BindImpl& b) :
+            Binder<IF, Impl, F...>(b)
+    {
+    }
+    BindImpl(BindImpl&& b) :
+            Binder<IF, Impl, F...>(std::move(b))
+    {
+    }
 
     BindImpl* clone_implementation__(void* dest) const override
     {
-        return new (reinterpret_cast<BindImpl*>(dest))
-            BindImpl(*this);
+        return new (reinterpret_cast<BindImpl*>(dest)) BindImpl(*this);
     }
 
     BindImpl* move_implementation__(void* dest) noexcept override
     {
-        return new (reinterpret_cast<BindImpl*>(dest))
-            BindImpl(std::move(*this));
+        return new (reinterpret_cast<BindImpl*>(dest)) BindImpl(
+                std::move(*this));
     }
 
-
 };
-} // namespace impl
+}  // namespace impl
 
-template<typename IF,typename T>
+template<typename IF, typename T>
 struct function_view_t;
 
-template<typename IF,typename R, typename... Args>
-struct function_view_t<IF,R(Args...)>{
-    function_view_t(IF& ii) noexcept : i(ii){}
+template<typename IF, typename R, typename ... Args>
+struct function_view_t<IF, R(Args...)> {
+    function_view_t(IF& ii) noexcept : i(ii)
+    {
+
+    }
 
     template<typename... AArgs>
-    R operator()(AArgs&&... args){
+    R operator()(AArgs&&... args)
+    {
         static_assert(
-            sizeof...(Args) == sizeof...(AArgs) &&
-            impl::And<std::is_convertible<AArgs, Args>::value...>::value,
-            "Interface is not callable");
+                sizeof...(Args) == sizeof...(AArgs) &&
+                impl::And<std::is_convertible<AArgs, Args>::value...>::value,
+                "Interface is not callable");
         return i.operator()<R>(std::forward<AArgs>(args)...);
     }
 
@@ -205,16 +272,19 @@ private:
     IF& i;
 };
 
-template<typename IF,typename... Args>
-struct function_view_t<IF,void(Args...)>{
-    function_view_t(IF& ii) noexcept : i(ii){}
+template<typename IF, typename ... Args>
+struct function_view_t<IF, void(Args...)> {
+    function_view_t(IF& ii) noexcept : i(ii)
+    {
+    }
 
     template<typename... AArgs>
-    void operator()(AArgs&&... args){
+    void operator()(AArgs&&... args)
+    {
         static_assert(
-            sizeof...(Args) == sizeof...(AArgs) &&
-            impl::And<std::is_convertible<AArgs, Args>::value...>::value,
-            "Interface is not callable");
+                sizeof...(Args) == sizeof...(AArgs) &&
+                impl::And<std::is_convertible<AArgs, Args>::value...>::value,
+                "Interface is not callable");
         i.operator()<void>(std::forward<AArgs>(args)...);
     }
 
@@ -223,59 +293,59 @@ private:
 };
 
 template<typename F, typename IF>
-function_view_t<IF, F> function_view(IF& i) {
+function_view_t<IF, F> function_view(IF& i)
+{
     return function_view_t<IF, F>(i);
 }
 
-template<typename... Fs>
-struct interface{
+template<typename ... Fs>
+struct interface {
 
     using if_t = impl::IInterface<Fs...>;
 
-    template<
-        typename T,
-        typename = std::enable_if_t< 
-                !std::is_base_of<interface,std::decay_t<T>>::value >
-    > explicit interface(T&& t) : 
-        impl_{impl::BindImpl<if_t,std::decay_t<T>,Fs...>(std::forward<T>(t))} 
+    template<typename T, typename = std::enable_if_t<
+            !std::is_base_of<interface, std::decay_t<T>>::value> > explicit interface(
+            T&& t) :
+            impl_ { impl::BindImpl<if_t, std::decay_t<T>, Fs...>(
+                    std::forward<T>(t)) }
     {
     }
 
-    template<typename R,typename... Args>
-    std::enable_if_t<
-        !std::is_same<void,R>::value,
-        R
-    > operator()(Args&&... args){
+    template<typename R, typename ... Args>
+    std::enable_if_t<!std::is_same<void, R>::value, R> operator()(
+            Args&&... args)
+    {
         check();
         return impl_->call_function__(std::forward<Args>(args)...);
     }
 
-    template<typename R,typename... Args>
-    std::enable_if_t<
-      std::is_same<void,R>::value
-    > operator()(Args&&... args){
+    template<typename R, typename ... Args>
+    std::enable_if_t<std::is_same<void, R>::value> operator()(Args&&... args)
+    {
         check();
         impl_->call_function__(std::forward<Args>(args)...);
     }
 
     interface(const interface& i) = default;
-    interface& operator = (const interface& i) = default;
+    interface& operator =(const interface& i) = default;
     interface(interface&& i) = default;
-    interface& operator = (interface&& i) = default;
+    interface& operator =(interface&& i) = default;
 
     ~interface() = default;
 
 private:
-    void check(){
-        if (!impl_) throw std::bad_function_call{};
+    void check()
+    {
+        if (!impl_)
+            throw std::bad_function_call {};
     }
 
-    polymorphic_obj_storage_t<if_t,impl::IInterfaceCloningPolicy> impl_;
+    polymorphic_obj_storage_t<if_t, impl::IInterfaceCloningPolicy> impl_;
 };
 
 template<typename F>
 using function = interface<F>;
 
-} // namespace estd
+}  // namespace estd
 
 #endif /* FUNCTIONAL_H_ */
