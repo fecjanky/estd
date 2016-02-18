@@ -68,6 +68,16 @@ template<size_t N>
 struct alignment_t {
 };
 
+template<typename A>
+struct DellocatorDeleter{
+    explicit DellocatorDeleter(A& a,size_t size = 1) : a_{a},size_{size}{}
+    void operator()(void* ptr){
+        a_.deallocate(ptr,size_);
+    }
+    A& a_;
+    size_t size_;
+};
+
 }  //namespace impl
 
 template<
@@ -124,9 +134,6 @@ public:
     {
         if (this != &rhs) {
             // deallocate with old allocator
-            // TODO(fecjanky): consider keeping allocated heap 
-            // storage instead of deallocation, 
-            // maybe add template policy for greater flexibility
             deallocate();
             // copy rhs allocator if required
             if (pocca::value) {
@@ -135,6 +142,39 @@ public:
             if (rhs.size_ > 0) {
                 allocate(rhs.size_);
             }
+        }
+        return *this;
+    }
+
+    obj_storage_t& strong_assign(const obj_storage_t& rhs)
+    {
+        if (this != &rhs) {
+            if (rhs.size()>0 && rhs.size() <= rhs.max_size()) {
+                // inline allocation case
+                deallocate()
+                allocate_inline(rhs.size_);
+                if (pocca::value) {
+                    static_cast<allocator_type>(*this) = rhs;
+                }
+            } else if (rhs.size() > rhs.max_size()) {
+                typename allocator_traits::pointer p {};
+                // allocate with proper allocator
+                if (pocca::value) {
+                    p = rhs.get_allocator().allocate(rhs.size()+alignment);
+                } else {
+                    p = get_allocator().allocate(rhs.size()+alignment);
+                }
+                deallocate();
+                heap_storage = p;
+                size_ = rhs.size()+alignment;
+            } else {
+                // deallocate with old allocator
+                deallocate();
+                if (pocca::value) {
+                    static_cast<allocator_type>(*this) = rhs;
+                }
+            }
+
         }
         return *this;
     }
