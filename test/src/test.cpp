@@ -89,7 +89,7 @@ using func_3 = void(std::vector<int>&,int);
 using func_4 = std::string(get_name_t);
 using func_5 = void(set_name_t,std::string&&);
 
-int main() {
+int func() {
     using namespace estd;
     std::vector<int> v{};
     using my_if = estd::interface<func_1, func_2, func_3, func_4, func_5>;
