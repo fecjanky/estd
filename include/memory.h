@@ -95,6 +95,7 @@ public:
     using allocator_traits = std::allocator_traits<allocator_type>;
     using pocma = typename allocator_traits::propagate_on_container_move_assignment;
     using pocca = typename allocator_traits::propagate_on_container_copy_assignment;
+    using pointer = typename allocator_traits::pointer;
 
     obj_storage_t() :
             storage { }, size_ { }
@@ -102,13 +103,13 @@ public:
     }
 
     template<typename A, typename = std::enable_if_t<
-            !std::is_base_of<obj_storage_t, A>::value
-                    && std::is_constructible<allocator_type, A>::value> > obj_storage_t(
-            A&& a) :
+            !std::is_base_of<obj_storage_t, std::decay_t<A>>::value
+                    && std::is_constructible<allocator_type, std::add_lvalue_reference_t<A>>::value> 
+    > obj_storage_t( A&& a) :
             Allocator<uint8_t>(std::forward<A>(a)), storage { }, size_ { }
     {
     }
-
+    
     explicit obj_storage_t(size_t n) :
             storage { }, size_ { }
     {
@@ -117,7 +118,7 @@ public:
 
     obj_storage_t(const obj_storage_t& rhs) :
             Allocator<uint8_t>(
-                    allocator_traits::select_on_container_copy_construction(
+                allocator_traits::select_on_container_copy_construction(
                             rhs.get_allocator())), storage { }, size_ { }
     {
         if (rhs.size_ > 0)
@@ -127,75 +128,62 @@ public:
     obj_storage_t(obj_storage_t&& rhs) noexcept
     : Allocator<uint8_t>(std::move(rhs)), heap_storage {}, size_ {}
     {
+        static_assert(std::is_nothrow_move_constructible<allocator_type>::value,
+            "allocator_type is not nothrow_move_constructible");
         obtain_rvalue(std::move(rhs));
     }
 
     obj_storage_t& operator= (const obj_storage_t& rhs)
     {
         if (this != &rhs) {
+            // make allocator based allocation first to
+            // provide strong exception guarantee
+            pointer p{};
+            if (rhs.size() > rhs.max_size()) {
+                if (pocca::value) {
+                    p = rhs.get_allocator().allocate(rhs.size());
+                } else {
+                    p = get_allocator().allocate(rhs.size());
+                }
+            }
             // deallocate with old allocator
             deallocate();
             // copy rhs allocator if required
             if (pocca::value) {
+                static_assert(std::is_nothrow_copy_assignable<allocator_type>::value,
+                    "allocator_type is not nothrow_copy_assignable");
                 static_cast<allocator_type>(*this) = rhs;
             }
-            if (rhs.size_ > 0) {
-                allocate(rhs.size_);
-            }
+            assign_storage(p, rhs);
         }
         return *this;
     }
 
-    obj_storage_t& strong_assign(const obj_storage_t& rhs)
+    obj_storage_t& operator= (obj_storage_t&& rhs) noexcept(pocma::value)
     {
         if (this != &rhs) {
-            if (rhs.size()>0 && rhs.size() <= rhs.max_size()) {
-                // inline allocation case
-                deallocate()
-                allocate_inline(rhs.size_);
-                if (pocca::value) {
-                    static_cast<allocator_type>(*this) = rhs;
-                }
-            } else if (rhs.size() > rhs.max_size()) {
-                typename allocator_traits::pointer p {};
-                // allocate with proper allocator
-                if (pocca::value) {
-                    p = rhs.get_allocator().allocate(rhs.size()+alignment);
-                } else {
-                    p = get_allocator().allocate(rhs.size()+alignment);
-                }
+            if (pocma::value) {
                 deallocate();
-                heap_storage = p;
-                size_ = rhs.size()+alignment;
-            } else {
-                // deallocate with old allocator
-                deallocate();
-                if (pocca::value) {
-                    static_cast<allocator_type>(*this) = rhs;
-                }
-            }
-
-        }
-        return *this;
-    }
-
-    obj_storage_t& operator= (obj_storage_t&& rhs)
-    noexcept(pocma::value)
-    {
-        if (this != &rhs) {
-            deallocate();
-            // if propagation we can take ownernship of
-            // allocated resource
-            if(pocma::value) {
                 obtain_rvalue(std::move(rhs));
+                static_assert(std::is_nothrow_move_assignable<allocator_type>::value,
+                    "allocator_type is not nothrow_move_assignable");
                 static_cast<allocator_type>(*this) = std::move(rhs);
-            } else {
+            }
+            else {
                 // can obtain storage only if allocators compare to equal
-                if(static_cast<allocator_type>(*this) == rhs) {
+                if (static_cast<allocator_type>(*this) == rhs) {
+                    deallocate();
                     obtain_rvalue(std::move(rhs));
-                } else {
-                    // need to reallocate with this allocator if not equal
-                    allocate(rhs.size_);
+                }
+                // need to reallocate with this allocator if not equal
+                else {
+                    // make allocation first to provide strong guarantee
+                    pointer p{};
+                    if (rhs.size() > rhs.max_size()) {
+                        p = get_allocator().allocate(rhs.size());
+                    }
+                    deallocate();
+                    assign_storage(p, rhs);
                 }
             }
         }
@@ -305,7 +293,7 @@ private:
         return ptr + reinterpret_cast<uintptr_t>(ptr) % alignment;
     }
 
-    // precondition: size_ and heap_storage = 0!
+    // precondition: this storage is in deallocated state
     void obtain_rvalue(obj_storage_t&& rhs) noexcept
     {
         // leave rhs as is if inline allocation happens
@@ -315,6 +303,19 @@ private:
         else if (rhs.size()) {
             std::swap(size_, rhs.size_);
             std::swap(heap_storage, rhs.heap_storage);
+        }
+    }
+
+    // precondition: this storage is in deallocated state
+    void assign_storage(pointer p,const obj_storage_t& rhs) noexcept {
+        // use preallocated storage 
+        if (rhs.size() > rhs.max_size()) {
+            heap_storage = p;
+            size_ = rhs.size();
+            // allocate inline else
+        }
+        else if (rhs.size() > 0) {
+            allocate_inline(rhs.size());
         }
     }
 
