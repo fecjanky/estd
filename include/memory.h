@@ -49,6 +49,25 @@ struct is_power_of<P, 0> {
     static constexpr bool value = false;
 };
 
+template<typename... Ts>
+struct AndT;
+
+template<typename... Ts>
+struct AndT<std::true_type, Ts...> {
+    using value = typename AndT<Ts...>::value;
+};
+
+template<typename... Ts>
+struct AndT<std::false_type , Ts...> {
+    using value = std::false_type;
+};
+
+template<>
+struct AndT<void> {
+    using value = std::true_type;
+};
+
+
 struct DefaultCloningPolicy {
     template<typename T>
     static T* Clone(const T& from, void* to)
@@ -135,59 +154,12 @@ public:
 
     obj_storage_t& operator= (const obj_storage_t& rhs)
     {
-        if (this != &rhs) {
-            // make allocator based allocation first to
-            // provide strong exception guarantee
-            pointer p{};
-            if (rhs.size() > rhs.max_size()) {
-                if (pocca::value) {
-                    p = rhs.get_allocator().allocate(rhs.size());
-                } else {
-                    p = get_allocator().allocate(rhs.size());
-                }
-            }
-            // deallocate with old allocator
-            deallocate();
-            // copy rhs allocator if required
-            if (pocca::value) {
-                static_assert(std::is_nothrow_copy_assignable<allocator_type>::value,
-                    "allocator_type is not nothrow_copy_assignable");
-                static_cast<allocator_type>(*this) = rhs;
-            }
-            assign_storage(p, rhs);
-        }
-        return *this;
+        return copy_assign_impl(rhs, pocca{});
     }
 
     obj_storage_t& operator= (obj_storage_t&& rhs) noexcept(pocma::value)
     {
-        if (this != &rhs) {
-            if (pocma::value) {
-                deallocate();
-                obtain_rvalue(std::move(rhs));
-                static_assert(std::is_nothrow_move_assignable<allocator_type>::value,
-                    "allocator_type is not nothrow_move_assignable");
-                static_cast<allocator_type>(*this) = std::move(rhs);
-            }
-            else {
-                // can obtain storage only if allocators compare to equal
-                if (static_cast<allocator_type>(*this) == rhs) {
-                    deallocate();
-                    obtain_rvalue(std::move(rhs));
-                }
-                // need to reallocate with this allocator if not equal
-                else {
-                    // make allocation first to provide strong guarantee
-                    pointer p{};
-                    if (rhs.size() > rhs.max_size()) {
-                        p = get_allocator().allocate(rhs.size());
-                    }
-                    deallocate();
-                    assign_storage(p, rhs);
-                }
-            }
-        }
-        return *this;
+        return move_assign_impl(std::move(rhs), pocma{});
     }
 
     void* allocate(size_t n)
@@ -264,6 +236,75 @@ public:
     }
 
 private:
+
+    obj_storage_t& copy_assign_impl(const obj_storage_t& rhs, std::true_type)
+    {
+        if (this != &rhs) {
+            // make allocator based allocation first to
+            // provide strong exception guarantee
+            pointer p{};
+            if (rhs.size() > rhs.max_size()) {
+                p = rhs.get_allocator().allocate(rhs.size());
+            }
+            deallocate();
+            static_assert(std::is_nothrow_copy_assignable<allocator_type>::value,
+                "allocator_type is not nothrow_copy_assignable");
+            static_cast<allocator_type>(*this) = rhs;
+            assign_storage(p, rhs);
+        }
+        return *this;
+    }
+
+    obj_storage_t& copy_assign_impl(const obj_storage_t& rhs, std::false_type)
+    {
+        if (this != &rhs) {
+            // make allocator based allocation first to
+            // provide strong exception guarantee
+            pointer p{};
+            if (rhs.size() > rhs.max_size()) {
+                p = get_allocator().allocate(rhs.size());
+            }
+            deallocate();
+            assign_storage(p, rhs);
+        }
+        return *this;
+    }
+
+
+    obj_storage_t& move_assign_impl(obj_storage_t&& rhs,std::true_type) noexcept
+    {
+        if (this != &rhs) {
+            deallocate();
+            obtain_rvalue(std::move(rhs));
+            static_assert(std::is_nothrow_move_assignable<allocator_type>::value,
+                "allocator_type is not nothrow_move_assignable");
+            static_cast<allocator_type>(*this) = std::move(rhs);
+        }
+        return *this;
+    }
+
+    obj_storage_t& move_assign_impl(obj_storage_t&& rhs, std::false_type)
+    {
+        if (this != &rhs) {
+            // can obtain storage only if allocators compare to equal
+            if (static_cast<allocator_type>(*this) == rhs) {
+                deallocate();
+                obtain_rvalue(std::move(rhs));
+            }
+            // need to reallocate with this allocator if not equal
+            else {
+                // make allocation first to provide strong guarantee
+                pointer p{};
+                if (rhs.size() > rhs.max_size()) {
+                    p = get_allocator().allocate(rhs.size());
+                }
+                deallocate();
+                assign_storage(p, rhs);
+            }
+        }
+        return *this;
+    }
+
 
     void* allocate_inline(size_t n) noexcept
     {
@@ -362,16 +403,18 @@ public:
 
     using allocator_type = typename storage_t::allocator_type;
     using allocator_traits = std::allocator_traits<allocator_type>;
-    using pocma = typename allocator_traits::propagate_on_container_move_assignment;
-
-    static_assert(std::is_polymorphic<IF>::value, "IF class is not polymorphic");
+    using type = IF;
+    static_assert(std::is_polymorphic<type>::value, "IF class is not polymorphic");
+    static_assert(std::is_same<type,std::decay_t<type>>::value, "IF class must be cv unqualifed and not reference type");
+    static_assert(noexcept(CloningPolicy::Move(std::move(std::declval<type>()), std::declval<void*>())),
+        "IF type is not noexcept moveable");
 
     template<
         typename T,
-        typename = std::enable_if_t<std::is_base_of<IF, std::decay_t<T>>::value>
+        typename = std::enable_if_t<std::is_base_of<type, std::decay_t<T>>::value>
     >
     polymorphic_obj_storage_t(T&& t) :
-        storage { sizeof(T) },
+        storage { sizeof(std::decay_t<T>) },
         obj { new (reinterpret_cast<std::decay_t<T>*>(storage.get()))
             std::decay_t<T>(std::forward<T>(t)) }
     {
@@ -396,7 +439,7 @@ public:
     polymorphic_obj_storage_t(polymorphic_obj_storage_t&& rhs) noexcept
     : storage {std::move(rhs.storage)}, obj {rhs.obj}
     {
-        // successful storage swap,
+        // successful storage swap, reset rhs obj pointer
         if (storage.size() > storage.max_size()) {
             rhs.obj = nullptr;
         }
@@ -407,43 +450,39 @@ public:
         }
     }
 
+    // provides basic guarantee
     polymorphic_obj_storage_t& operator=(const polymorphic_obj_storage_t& rhs)
     {
         if (this != &rhs) {
             destroy();
             storage = rhs.storage;
-            obj = rhs.get() ? CloningPolicy::Clone(*rhs.get(),storage.get()) : nullptr;
+            obj = rhs.get() ?
+                CloningPolicy::Clone(*rhs.get(), storage.get()) : nullptr;
         }
         return *this;
     }
-
+    
+    // strong guarantee if storage is nothrow move assignable
+    // else basic guarantee 
     polymorphic_obj_storage_t& operator=(polymorphic_obj_storage_t&& rhs)
-        noexcept(pocma::value)
+        noexcept(std::is_nothrow_move_assignable<storage_t>::value)
     {
-        if (this != &rhs) {
+        if (!rhs) {
             destroy();
-            // if no object in rhs, nothing to do
-            if (rhs) {
-                // for inline object inline allocation has to be made
-                if (rhs.storage.size() <= rhs.storage.max_size()) {
-                    storage.allocate(rhs.storage.size());
-                    obj = CloningPolicy::Move(std::move(*rhs.get()),
-                            storage.get());
-                }
-                else {
-                    // store old storage for comparison
-                    auto old_storage = rhs.storage.get();
-                    storage = std::move(rhs.storage);
-                    // if no reallocation happened, swap obj pointers
-                    if (old_storage == storage.get()) {
-                        obj = rhs.obj;
-                        rhs.obj = nullptr;
-                    }
-                    // else move object to newly allocated storage
-                    else {
-                        obj = CloningPolicy::Move(std::move(*rhs.get()), storage.get());
-                    }
-                }
+            storage = std::move(rhs.storage);
+            return *this;
+        }
+
+        if (this != &rhs) {
+            // inline allocation case
+            if (rhs.storage.size() <= rhs.storage.max_size()) {
+                destroy();
+                storage.allocate(rhs.storage.size());
+                obj = CloningPolicy::Move(std::move(*rhs.get()),
+                        storage.get());
+            } else {
+                move_assign_w_allocated_obj(std::move(rhs),
+                    std::is_nothrow_move_assignable<storage_t>{});
             }
         }
         return *this;
@@ -454,12 +493,12 @@ public:
         destroy();
     }
 
-    IF* get()
+    type* get()
     {
         return obj;
     }
 
-    const IF* get() const
+    const type* get() const
     {
         return obj;
     }
@@ -469,12 +508,12 @@ public:
         return obj != nullptr;
     }
 
-    IF* operator->()
+    type* operator->()
     {
         return obj;
     }
 
-    const IF* operator->() const
+    const type* operator->() const
     {
         return obj;
     }
@@ -490,10 +529,38 @@ public:
     }
 
 private:
+
+    void move_assign_w_allocated_obj(polymorphic_obj_storage_t&& rhs,
+        std::true_type) noexcept
+    {
+        destroy();
+        storage = std::move(rhs.storage);
+        std::swap(obj, rhs.obj);
+    }
+
+    void move_assign_w_allocated_obj(polymorphic_obj_storage_t&& rhs,
+        std::false_type)
+    {
+        destroy();
+        // store old storage for comparison
+        auto old_storage = rhs.storage.get();
+        storage = std::move(rhs.storage);
+        // if no reallocation happened, swap obj pointers
+        if (old_storage == storage.get()) {
+            std::swap(obj, rhs.obj);
+        }
+        // else move object to newly allocated storage
+        else {
+            obj = CloningPolicy::Move(std::move(*rhs.get()),
+                storage.get());
+        }
+    }
+
     void destroy() noexcept
     {
-        if (obj)
-        obj->~IF();
+        if (obj) {
+            obj->~IF();
+        }
         obj = nullptr;
     }
 
@@ -507,7 +574,7 @@ private:
     ///// member variables
     /////////////////////////
     storage_t storage;
-    IF* obj;
+    type* obj;
 };
 
 template<typename IF>
