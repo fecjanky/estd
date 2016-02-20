@@ -101,15 +101,17 @@ struct DellocatorDeleter{
 
 template<
     size_t storage_size = 4, // in pointer size
-    size_t alignment = alignof(std::max_align_t),
+    size_t alignment_ = alignof(std::max_align_t),
     template<typename > class Allocator = std::allocator
 >
 class obj_storage_t: private Allocator<uint8_t> {
 public:
     static constexpr size_t max_size_ =
             storage_size < 1 ? sizeof(void*) : storage_size * sizeof(void*);
-    static_assert(impl::is_power_of<2,alignment>::value,"alignment is not a power of 2");
+    static constexpr size_t alignment = alignment_;
 
+    static_assert(impl::is_power_of<2,alignment>::value,"alignment is not a power of 2");
+        
     using allocator_type = Allocator<uint8_t>;
     using allocator_traits = std::allocator_traits<allocator_type>;
     using pocma = typename allocator_traits::propagate_on_container_move_assignment;
@@ -140,8 +142,11 @@ public:
                 allocator_traits::select_on_container_copy_construction(
                             rhs.get_allocator())), storage { }, size_ { }
     {
-        if (rhs.size_ > 0)
-            allocate(rhs.size_);
+        if (rhs.size() > 0 && rhs.size() <= rhs.max_size()) {
+            allocate_inline(rhs.size());
+        } else if (rhs.size() > 0) {
+            allocate_with_allocator(rhs.size());
+        }
     }
 
     obj_storage_t(obj_storage_t&& rhs) noexcept
@@ -169,7 +174,7 @@ public:
         if(n <= max_size_) {
             return allocate_inline(n);
         } else {
-            return allocate_with_allocator(n);
+            return allocate_with_allocator_aligned(n);
         }
     }
 
@@ -214,8 +219,10 @@ public:
     {
         if (size_>max_size_) {
             return aligned_heap_addr(heap_storage);
-        } else {
+        } else if (size_ > 0) {
             return &*storage.begin();
+        } else {
+            return nullptr;
         }
     }
 
@@ -312,14 +319,21 @@ private:
         return &*storage.begin();
     }
 
+    void* allocate_with_allocator_aligned(size_t n)
+    {
+        // allocating +alignment bytes to be able to
+        // align heap storage as well
+        allocate_with_allocator(n + alignment);
+        return aligned_heap_addr(heap_storage);
+    }
+
     void* allocate_with_allocator(size_t n)
     {
         // allocating +alignment bytes to be able to
         // align heap storage as well
-        auto alloc_size = n + alignment;
-        heap_storage = static_cast<uint8_t*>(this->allocator_type::allocate(alloc_size));
-        size_ = alloc_size;
-        return aligned_heap_addr(heap_storage);
+        heap_storage = get_allocator().allocate(n);
+        size_ = n;
+        return heap_storage;
     }
 
     void allocation_check()
