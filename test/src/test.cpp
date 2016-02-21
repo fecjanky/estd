@@ -34,6 +34,10 @@
 struct get_name_t{};
 struct set_name_t{};
 
+
+
+
+
 struct MyImpl {
     double operator()(int,double) {
         return 3.14;
@@ -107,5 +111,8 @@ int func() {
     function_view<func_5>(i)(set_name_t{}, std::move(s));
     obj_storage o;
     o.allocate(4);
+    
+
+
     return 0;
 }

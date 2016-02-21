@@ -102,17 +102,20 @@ struct DellocatorDeleter{
 template<
     size_t storage_size = 4, // in pointer size
     size_t alignment_ = alignof(std::max_align_t),
-    template<typename > class Allocator = std::allocator
+    class Allocator = std::allocator<uint8_t>
 >
-class obj_storage_t: private Allocator<uint8_t> {
+class obj_storage_t: private Allocator {
 public:
     static constexpr size_t max_size_ =
             storage_size < 1 ? sizeof(void*) : storage_size * sizeof(void*);
     static constexpr size_t alignment = alignment_;
 
     static_assert(impl::is_power_of<2,alignment>::value,"alignment is not a power of 2");
-        
-    using allocator_type = Allocator<uint8_t>;
+
+    static_assert(std::is_same<typename Allocator::value_type, uint8_t>::value,
+        "obj_storage_t requires a byte allocator");
+
+    using allocator_type = Allocator;
     using allocator_traits = std::allocator_traits<allocator_type>;
     using pocma = typename allocator_traits::propagate_on_container_move_assignment;
     using pocca = typename allocator_traits::propagate_on_container_copy_assignment;
@@ -123,11 +126,9 @@ public:
     {
     }
 
-    template<typename A, typename = std::enable_if_t<
-            !std::is_base_of<obj_storage_t, std::decay_t<A>>::value
-                    && std::is_constructible<allocator_type, std::add_lvalue_reference_t<A>>::value> 
-    > obj_storage_t( A&& a) :
-            Allocator<uint8_t>(std::forward<A>(a)), storage { }, size_ { }
+    template<typename A> 
+    obj_storage_t(std::allocator_arg_t, A&& a) :
+        Allocator(std::forward<A>(a)), storage { }, size_ { }
     {
     }
     
@@ -138,7 +139,7 @@ public:
     }
 
     obj_storage_t(const obj_storage_t& rhs) :
-            Allocator<uint8_t>(
+        Allocator(
                 allocator_traits::select_on_container_copy_construction(
                             rhs.get_allocator())), storage { }, size_ { }
     {
@@ -150,7 +151,7 @@ public:
     }
 
     obj_storage_t(obj_storage_t&& rhs) noexcept
-    : Allocator<uint8_t>(std::move(rhs)), heap_storage {}, size_ {}
+    : Allocator(std::move(rhs)), heap_storage {}, size_ {}
     {
         static_assert(std::is_nothrow_move_constructible<allocator_type>::value,
             "allocator_type is not nothrow_move_constructible");
@@ -250,13 +251,14 @@ private:
             // make allocator based allocation first to
             // provide strong exception guarantee
             pointer p{};
+            allocator_type temp_alloc = rhs.get_allocator();
             if (rhs.size() > rhs.max_size()) {
-                p = rhs.get_allocator().allocate(rhs.size());
+                p = temp_alloc.allocate(rhs.size());
             }
             deallocate();
-            static_assert(std::is_nothrow_copy_assignable<allocator_type>::value,
-                "allocator_type is not nothrow_copy_assignable");
-            static_cast<allocator_type>(*this) = rhs;
+            static_assert(std::is_nothrow_move_assignable<allocator_type>::value,
+                "allocator_type is not nothrow_move_assignable");
+            get_allocator() = std::move(temp_alloc);
             assign_storage(p, rhs);
         }
         return *this;
@@ -285,7 +287,7 @@ private:
             obtain_rvalue(std::move(rhs));
             static_assert(std::is_nothrow_move_assignable<allocator_type>::value,
                 "allocator_type is not nothrow_move_assignable");
-            static_cast<allocator_type>(*this) = std::move(rhs);
+            get_allocator() = std::move(rhs);
         }
         return *this;
     }
@@ -294,7 +296,7 @@ private:
     {
         if (this != &rhs) {
             // can obtain storage only if allocators compare to equal
-            if (static_cast<allocator_type>(*this) == rhs) {
+            if (get_allocator() == rhs) {
                 deallocate();
                 obtain_rvalue(std::move(rhs));
             }
@@ -345,7 +347,7 @@ private:
 
     static void* aligned_heap_addr(uint8_t* ptr) noexcept
     {
-        return ptr + reinterpret_cast<uintptr_t>(ptr) % alignment;
+        return ptr + (alignment - reinterpret_cast<uintptr_t>(ptr) % alignment);
     }
 
     // precondition: this storage is in deallocated state
@@ -413,7 +415,7 @@ template<
 >
 class polymorphic_obj_storage_t {
 public:
-    using storage_t = obj_storage_t<storage_size, alignment,Allocator>;
+    using storage_t = obj_storage_t<storage_size, alignment,Allocator<uint8_t>>;
 
     using allocator_type = typename storage_t::allocator_type;
     using allocator_traits = std::allocator_traits<allocator_type>;

@@ -29,6 +29,7 @@
 
 #include <stdio.h>
 
+#include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
 int PullInTestObjStorageLibrary();
@@ -36,6 +37,6 @@ static int dummyObjStorage = PullInTestObjStorageLibrary();
 
 GTEST_API_ int main(int argc, char **argv) {
     printf("Running main() from " __FILE__ "\n");
-    testing::InitGoogleTest(&argc, argv);
+    testing::InitGoogleMock(&argc, argv);
     return RUN_ALL_TESTS();
 }
