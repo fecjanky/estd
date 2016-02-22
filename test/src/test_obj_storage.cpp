@@ -6,7 +6,10 @@
 #include "test_obj_storage.h"
 #include "mock_allocator.h"
 
-__declspec(dllexport) int PullInTestObjStorageLibrary() { return 0; }
+#ifdef MSVC
+__declspec(dllexport)
+#endif //MSVC
+int PullInTestObjStorageLibrary() { return 0; }
 
 namespace ObjStorageTest {
 
@@ -14,7 +17,7 @@ TEST(ObjStorageBasicTest, DefaultConstruction) {
     obj_storage_test o;
     ASSERT_EQ(def_storage_size*sizeof(void*), o.max_size());
     EXPECT_EQ(true, o.get_allocator().def_constructed);
-    EXPECT_EQ(0, o.size());
+    EXPECT_EQ(0U, o.size());
     EXPECT_EQ(nullptr, o.get());
     EXPECT_THROW(o.get_checked(), std::exception);
 }
@@ -73,11 +76,11 @@ using AllocationTestTypes = ::testing::Types<
 >;
 
 
-INSTANTIATE_TYPED_TEST_CASE_P(My, Test, AllocationTestTypes);
+INSTANTIATE_TYPED_TEST_CASE_P(ObjStorage, Test, AllocationTestTypes);
 
-INSTANTIATE_TYPED_TEST_CASE_P(My, TestInline, AllocationTestInlineTypes);
+INSTANTIATE_TYPED_TEST_CASE_P(ObjStorage, TestInline, AllocationTestInlineTypes);
 
-INSTANTIATE_TYPED_TEST_CASE_P(My, TestAllocated, AllocationTestAllocatedTypes);
+INSTANTIATE_TYPED_TEST_CASE_P(ObjStorage, TestAllocated, AllocationTestAllocatedTypes);
 
 
 }

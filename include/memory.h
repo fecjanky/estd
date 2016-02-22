@@ -97,6 +97,13 @@ struct DellocatorDeleter{
     size_t size_;
 };
 
+
+static inline void* aligned_heap_addr(void* ptr,size_t alignment) noexcept
+{
+    return reinterpret_cast<void*>(((reinterpret_cast<uintptr_t>(ptr)+ alignment - 1)/alignment)
+                    *alignment);
+}
+
 }  //namespace impl
 
 template<
@@ -106,8 +113,10 @@ template<
 >
 class obj_storage_t: private Allocator {
 public:
+
     static constexpr size_t max_size_ =
             storage_size < 1 ? sizeof(void*) : storage_size * sizeof(void*);
+
     static constexpr size_t alignment = alignment_;
 
     static_assert(impl::is_power_of<2,alignment>::value,"alignment is not a power of 2");
@@ -119,6 +128,7 @@ public:
     using allocator_traits = std::allocator_traits<allocator_type>;
     using pocma = typename allocator_traits::propagate_on_container_move_assignment;
     using pocca = typename allocator_traits::propagate_on_container_copy_assignment;
+    using pocs = typename allocator_traits::propagate_on_container_swap;
     using pointer = typename allocator_traits::pointer;
 
     obj_storage_t() :
@@ -166,6 +176,11 @@ public:
     obj_storage_t& operator= (obj_storage_t&& rhs) noexcept(pocma::value)
     {
         return move_assign_impl(std::move(rhs), pocma{});
+    }
+
+    void swap(obj_storage_t&& rhs) noexcept(pocs::value)
+    {
+        swap_impl(std::move(rhs),pocs{});
     }
 
     void* allocate(size_t n)
@@ -218,10 +233,10 @@ public:
 
     void* get() noexcept
     {
-        if (size_>max_size_) {
-            return aligned_heap_addr(heap_storage);
-        } else if (size_ > 0) {
+        if (size_ > 0 && size_ <= max_size_) {
             return &*storage.begin();
+        } else if (size_ > max_size_){
+            return impl::aligned_heap_addr(heap_storage,alignment);
         } else {
             return nullptr;
         }
@@ -247,6 +262,9 @@ private:
 
     obj_storage_t& copy_assign_impl(const obj_storage_t& rhs, std::true_type)
     {
+        static_assert(std::is_nothrow_move_assignable<allocator_type>::value,
+            "allocator_type is not nothrow_move_assignable");
+
         if (this != &rhs) {
             // make allocator based allocation first to
             // provide strong exception guarantee
@@ -256,8 +274,6 @@ private:
                 p = temp_alloc.allocate(rhs.size());
             }
             deallocate();
-            static_assert(std::is_nothrow_move_assignable<allocator_type>::value,
-                "allocator_type is not nothrow_move_assignable");
             get_allocator() = std::move(temp_alloc);
             assign_storage(p, rhs);
         }
@@ -282,11 +298,12 @@ private:
 
     obj_storage_t& move_assign_impl(obj_storage_t&& rhs,std::true_type) noexcept
     {
+        static_assert(std::is_nothrow_move_assignable<allocator_type>::value,
+            "allocator_type is not nothrow_move_assignable");
+
         if (this != &rhs) {
             deallocate();
             obtain_rvalue(std::move(rhs));
-            static_assert(std::is_nothrow_move_assignable<allocator_type>::value,
-                "allocator_type is not nothrow_move_assignable");
             get_allocator() = std::move(rhs);
         }
         return *this;
@@ -314,6 +331,26 @@ private:
         return *this;
     }
 
+    void swap_impl(obj_storage_t&& rhs, std::true_type) noexcept
+    {
+        std::swap(get_allocator(),rhs.get_allocator());
+        swap_guts(std::move(rhs));
+    }
+
+    void swap_impl(obj_storage_t&& rhs, std::false_type)
+    {
+        if(get_allocator() != rhs.get_allocator()) {
+            throw std::runtime_error(
+                    "obj_storage_t: swap attempt with unequal allocators ");
+        }
+        swap_guts(std::move(rhs));
+    }
+
+    void swap_guts(obj_storage_t&& rhs) noexcept{
+        // this implicitly swaps heap_storage ptrs as well
+        std::swap(storage,rhs.storage);
+        std::swap(size_,rhs.size_);
+    }
 
     void* allocate_inline(size_t n) noexcept
     {
@@ -326,7 +363,7 @@ private:
         // allocating +alignment bytes to be able to
         // align heap storage as well
         allocate_with_allocator(n + alignment);
-        return aligned_heap_addr(heap_storage);
+        return impl::aligned_heap_addr(heap_storage,alignment);
     }
 
     void* allocate_with_allocator(size_t n)
@@ -345,11 +382,6 @@ private:
         }
     }
 
-    static void* aligned_heap_addr(uint8_t* ptr) noexcept
-    {
-        return ptr + (alignment - reinterpret_cast<uintptr_t>(ptr) % alignment);
-    }
-
     // precondition: this storage is in deallocated state
     void obtain_rvalue(obj_storage_t&& rhs) noexcept
     {
@@ -357,7 +389,7 @@ private:
         if (rhs.size() > 0 && rhs.size() <= max_size_) {
             allocate_inline(rhs.size());
         }
-        else if (rhs.size()) {
+        else if (rhs.size() > 0) {
             std::swap(size_, rhs.size_);
             std::swap(heap_storage, rhs.heap_storage);
         }
@@ -366,13 +398,13 @@ private:
     // precondition: this storage is in deallocated state
     void assign_storage(pointer p,const obj_storage_t& rhs) noexcept {
         // use preallocated storage 
-        if (rhs.size() > rhs.max_size()) {
+        if (rhs.size() > 0 && rhs.size() <= max_size_) {
+            allocate_inline(rhs.size());
+        }
+        // allocate inline else
+        else if (rhs.size() > 0) {
             heap_storage = p;
             size_ = rhs.size();
-            // allocate inline else
-        }
-        else if (rhs.size() > 0) {
-            allocate_inline(rhs.size());
         }
     }
 
@@ -392,14 +424,14 @@ using obj_storage = obj_storage_t<>;
 
 // TODO(fecjanky): specialize std::swap for obj_storage_t
 
-template<size_t s, size_t a, template<typename > class A>
+template<size_t s, size_t a, class A>
 bool operator==(const obj_storage_t<s, a, A>& lhs,
         const obj_storage_t<s, a, A>& rhs) noexcept
 {
     return (!lhs && !rhs) || ((lhs && rhs) && (lhs.get() == rhs.get()));
 }
 
-template<size_t s, size_t a, template<typename > class A>
+template<size_t s, size_t a, class A>
 bool operator!=(const obj_storage_t<s, a, A>& lhs,
         const obj_storage_t<s, a, A>& rhs) noexcept
 {
@@ -597,5 +629,17 @@ template<typename IF>
 using polymorphic_obj_storage = polymorphic_obj_storage_t<IF>;
 
 }  //namespace estd
+
+namespace std{
+
+template<size_t s,size_t a, class A>
+inline void swap(::estd::obj_storage_t<s,a,A>&& lhs,::estd::obj_storage_t<s,a,A>&& rhs)
+noexcept(noexcept(::estd::obj_storage_t<s,a,A>::swap(lhs,rhs)))
+{
+    lhs.swap(std::move(rhs));
+}
+
+}  // namespace std
+
 
 #endif  /* MEMORY_H_ */

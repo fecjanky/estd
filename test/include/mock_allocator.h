@@ -1,8 +1,8 @@
 #ifndef MOCK_ALLOCATOR_H_
 #define MOCK_ALLOCATOR_H_
 
-#include "gmock\gmock.h"
-#include "gtest\gtest.h"
+#include "gmock/gmock.h"
+#include "gtest/gtest.h"
 
 #include <type_traits>
 
@@ -77,11 +77,11 @@ namespace Mock {
         AllocatorMock(const AllocatorMock& a) : AllocatorBase<T>(a){}
         AllocatorMock(AllocatorMock&& a) : AllocatorBase<T>(std::move(a)) {}
 
-        template<typename T>
-        AllocatorMock(const AllocatorMock<T, PropOnCCopy, PropOnCMove, PropOnCSwap>& a) : AllocatorBase<T>(a) {}
+        template<typename TT>
+        AllocatorMock(const AllocatorMock<TT, PropOnCCopy, PropOnCMove, PropOnCSwap>& a) : AllocatorBase<T>(a) {}
 
-        template<typename T>
-        AllocatorMock(AllocatorMock<T, PropOnCCopy, PropOnCMove, PropOnCSwap>&& a) : AllocatorBase<T>(std::move(a)) {}
+        template<typename TT>
+        AllocatorMock(AllocatorMock<TT, PropOnCCopy, PropOnCMove, PropOnCSwap>&& a) : AllocatorBase<T>(std::move(a)) {}
 
         AllocatorMock& operator=(const AllocatorMock& a) noexcept {
             copy_assign(a);
@@ -93,15 +93,15 @@ namespace Mock {
             return *this;
         }
 
-        template<typename T>
-        bool operator==(const AllocatorMock<T>& rhs) const noexcept
+        template<typename TT>
+        bool operator==(const AllocatorMock<TT,PropOnCCopy, PropOnCMove, PropOnCSwap>& rhs) const noexcept
         {
             AllocatorMock temp(rhs);
             return equals(rhs);
         }
 
-        template<typename T>
-        bool operator!=(const AllocatorMock<T>& rhs) const noexcept
+        template<typename TT>
+        bool operator!=(const AllocatorMock<T,PropOnCCopy, PropOnCMove, PropOnCSwap>& rhs) const noexcept
         {
             AllocatorMock temp(rhs);
             return not_equals(rhs);
