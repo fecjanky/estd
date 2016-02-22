@@ -263,16 +263,71 @@ TYPED_TEST_P(Test, CopyAssignFromAllocatedtoInline) {
 
     this->s_allocated_inline = this->s_allocated;
 
-    DefaultValue<void*>::Clear();
+    DefaultValue<typename Allocator::value_type>::Clear();
 
     EXPECT_EQ(this->s_allocated.size(), this->s_allocated_inline.size());
     EXPECT_NE(this->s_allocated.get(), this->s_allocated_inline.get());
 }
 
+TYPED_TEST_P(Test, CopyAssignFromAllocatedtoAllocated) {
+    using ::testing::_;
+    using ::testing::Return;
+    using ::testing::DefaultValue;
+    using ::testing::InSequence;
+    using Allocator = typename TestNew<TypeParam>::Allocator;
+    using BaseT = ::ObjStorageTest::Test<TypeParam>;
+    using PropOnCCopy = typename BaseT::PropOnCCopy;
+    using storage_t = typename BaseT::storage_t;
+    constexpr auto ptr = Test<TypeParam>::ptr;
+    constexpr auto alignment = BaseT::alignment;
+    constexpr auto asize = storage_t::max_size() + 1;
+    constexpr auto real_asize = asize + alignment;
+    auto test_ptr = Mock::pointer<uint8_t>(0xfefec0c0);
+    auto init_ptr = Mock::pointer<uint8_t>(0xdefdefde);
+
+    DefaultValue<typename Allocator::pointer>::
+        Set(Mock::pointer<typename Allocator::value_type>(init_ptr));
+
+    storage_t test(asize);
+
+    DefaultValue<typename Allocator::pointer>::
+        Set(Mock::pointer<typename Allocator::value_type>(test_ptr));
+
+
+    if (PropOnCCopy::value) {
+        //Allocation is unexpect_callable in temp_allocator
+        InSequence d;
+        EXPECT_CALL(test.get_allocator(), deallocate(init_ptr, real_asize));
+        EXPECT_CALL(test.get_allocator(), move_assign(_));
+    } else {
+        InSequence d;
+        EXPECT_CALL(test.get_allocator(), 
+            allocate(this->s_allocated.size()))
+            .WillOnce(Return(test_ptr));
+        EXPECT_CALL(test.get_allocator(), deallocate(init_ptr, real_asize));
+        EXPECT_CALL(test.get_allocator(), move_assign(_)).Times(0);
+        EXPECT_CALL(test.get_allocator(), copy_assign(_)).Times(0);
+    }
+    
+    test = this->s_allocated;
+
+    DefaultValue<typename Allocator::value_type>::Clear();
+
+    EXPECT_CALL(test.get_allocator(), deallocate(test_ptr,
+        this->s_allocated.size()));
+
+    EXPECT_EQ(this->s_allocated.size(), test.size());
+    EXPECT_NE(this->s_allocated.get(), test.get());
+    EXPECT_EQ(estd::impl::aligned_heap_addr(test_ptr,alignment),
+        test.get());
+}
+
+
 REGISTER_TYPED_TEST_CASE_P(Test,
     CopyAssignFromInlineToInline,
     CopyAssignFromInlineToAllocated,
-    CopyAssignFromAllocatedtoInline
+    CopyAssignFromAllocatedtoInline,
+    CopyAssignFromAllocatedtoAllocated
     );
 
 REGISTER_TYPED_TEST_CASE_P(TestAllocated,
@@ -280,6 +335,7 @@ REGISTER_TYPED_TEST_CASE_P(TestAllocated,
 REGISTER_TYPED_TEST_CASE_P(TestInline,
     BasicAllocation);
 
+/////////////////////////////////////////////
 
 TEST_P(AllocationTest, CopyConstruction) {
 
@@ -362,7 +418,7 @@ TEST_P(AllocationTest, MoveAssignmentAllocated) {
     }
 }
 
-// TODO: mock allocator and add test cases
+// TODO(fecjanky): add test cases for swap and move assign
 
 }  // namespace ObjStorageTest
 
