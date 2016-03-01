@@ -52,6 +52,24 @@ struct And<b, B> {
     static constexpr bool value = b && B;
 };
 
+template<typename T>
+struct sforward_ret {
+    using type = std::add_lvalue_reference_t<T>;
+};
+
+template<typename T>
+struct sforward_ret<T&&> {
+    using type = T&&;
+};
+
+template<typename T>
+using sforward_ret_t = typename sforward_ret<T>::type;
+
+template<typename T,typename TT>
+constexpr sforward_ret_t<T> static_forward(TT&& t) noexcept{
+    return static_cast<sforward_ret_t<T>>(t);
+}
+
 template<typename ... F>
 struct IFunction;
 
@@ -130,7 +148,7 @@ struct Binder<IF, Impl, R(Args...), F...> : public Binder<IF, Impl, F...> {
 
     R call_function__(Args ... args) override
     {
-        return this->Impl::operator()(std::forward<Args>(args)...);
+        return this->Impl::operator()(static_forward<Args>(args)...);
     }
 
 };
@@ -157,7 +175,7 @@ struct Binder<IF, Impl, void(Args...), F...> : public Binder<IF, Impl, F...> {
 
     void call_function__(Args ... args) override
     {
-        this->Impl::operator()(std::forward<Args>(args)...);
+        this->Impl::operator()(static_forward<Args>(args)...);
     }
 
 };
@@ -184,7 +202,7 @@ struct Binder<IF, Impl, R(Args...)> : public IF, protected Impl {
 
     R call_function__(Args ... args) override
     {
-        return this->Impl::operator()(std::forward<Args>(args)...);
+        return this->Impl::operator()(static_forward<Args>(args)...);
     }
 
 };
@@ -211,7 +229,7 @@ struct Binder<IF, Impl, void(Args...)> : public IF, protected Impl {
 
     void call_function__(Args ... args) override
     {
-        this->Impl::operator()(std::forward<Args>(args)...);
+        this->Impl::operator()(static_forward<Args>(args)...);
     }
 };
 
@@ -246,8 +264,28 @@ struct BindImpl: public Binder<IF, Impl, F...> {
     }
 
 };
+
+template<typename Impl,typename... F>
+struct interface_signature;
+
+template<typename Impl, typename R,typename... Args,typename... F>
+struct interface_signature<Impl, R(Args...),F...> : public interface_signature<Impl,F...> {
+    using interface_signature<Impl, F...>::operator();
+    R operator()(Args... args) {
+        return Impl::invoke<R>(static_cast<Impl&>(*this), static_forward<Args>(args)...);
+    }
+};
+
+template<typename Impl, typename R, typename... Args>
+struct interface_signature<Impl, R(Args...)> {
+    R operator()(Args... args) {
+        return Impl::invoke<R>(static_cast<Impl&>(*this), static_forward<Args>(args)...);
+    }
+};
+
 }  // namespace impl
 
+// Can be used if disambiguation is requried
 template<typename IF, typename T>
 struct function_view_t;
 
@@ -255,7 +293,6 @@ template<typename IF, typename R, typename ... Args>
 struct function_view_t<IF, R(Args...)> {
     function_view_t(IF& ii) noexcept : i(ii)
     {
-
     }
 
     template<typename... AArgs>
@@ -263,9 +300,10 @@ struct function_view_t<IF, R(Args...)> {
     {
         static_assert(
                 sizeof...(Args) == sizeof...(AArgs) &&
-                impl::And<std::is_convertible<AArgs, Args>::value...>::value,
+                impl::And<std::is_convertible<AArgs, Args>::value...>::value &&
+                std::is_convertible<decltype(IF::invoke<R>(std::declval<IF>(),std::declval<AArgs>()...)),R>::value ,
                 "Interface is not callable");
-        return i.operator()<R>(std::forward<AArgs>(args)...);
+        return i.invoke<R>(i,std::forward<AArgs>(args)...);
     }
 
 private:
@@ -285,7 +323,7 @@ struct function_view_t<IF, void(Args...)> {
                 sizeof...(Args) == sizeof...(AArgs) &&
                 impl::And<std::is_convertible<AArgs, Args>::value...>::value,
                 "Interface is not callable");
-        i.operator()<void>(std::forward<AArgs>(args)...);
+        i.invoke<void>(i, std::forward<AArgs>(args)...);
     }
 
 private:
@@ -299,9 +337,10 @@ function_view_t<IF, F> function_view(IF& i)
 }
 
 template<typename ... Fs>
-struct interface {
+struct interface : public impl::interface_signature<interface<Fs...>,Fs...> {
 
     using if_t = impl::IInterface<Fs...>;
+    using impl::interface_signature<interface<Fs...>, Fs...>::operator();
 
     template<typename T, typename = std::enable_if_t<
             !std::is_base_of<interface, std::decay_t<T>>::value> > explicit interface(
@@ -311,27 +350,27 @@ struct interface {
     {
     }
 
-    template<typename R, typename ... Args>
-    std::enable_if_t<!std::is_same<void, R>::value, R> operator()(
-            Args&&... args)
-    {
-        check();
-        return impl_->call_function__(std::forward<Args>(args)...);
-    }
-
-    template<typename R, typename ... Args>
-    std::enable_if_t<std::is_same<void, R>::value> operator()(Args&&... args)
-    {
-        check();
-        impl_->call_function__(std::forward<Args>(args)...);
-    }
-
     interface(const interface& i) = default;
     interface& operator =(const interface& i) = default;
     interface(interface&& i) = default;
     interface& operator =(interface&& i) = default;
 
     ~interface() = default;
+
+    template<typename R, typename ... Args>
+    static std::enable_if_t<!std::is_same<void, R>::value, R> invoke(
+        interface& i, Args&&... args)
+    {
+        i.check();
+        return i.impl_->call_function__(std::forward<Args>(args)...);
+    }
+
+    template<typename R, typename ... Args>
+    static std::enable_if_t<std::is_same<void, R>::value> invoke(interface& i,Args&&... args)
+    {
+        i.check();
+        i.impl_->call_function__(std::forward<Args>(args)...);
+    }
 
 private:
     void check()

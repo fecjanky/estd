@@ -106,13 +106,14 @@ int func() {
     //static_assert(std::is_same<decltype(i),decltype(i2)>::value ,"Oh shit...");
     std::string s = "hello";
     //std::reference_wrapper<std::string&&> sr(std::move(s));
+    auto d = i(4, 3.4);
+    i(v, 0);
+    i(set_name_t{}, std::move(s));
     function_view<func_1>(i)(3, 3.4);
-    function_view<func_3>(i)(v,0);
-    function_view<func_5>(i)(set_name_t{}, std::move(s));
+    //function_view<func_3>(i)(v,0);
+    //function_view<func_5>(i)(set_name_t{}, std::move(s));
     obj_storage o;
     o.allocate(4);
-    
-
 
     return 0;
 }
