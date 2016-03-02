@@ -126,8 +126,8 @@ namespace Mock {
         // Helpers
         MOCK_METHOD1_T(copy_assign, void(const AllocatorMock&));
         MOCK_METHOD1_T(move_assign, void(const AllocatorMock&));
-        MOCK_METHOD1_T(equals, bool(const AllocatorMock&));
-        MOCK_METHOD1_T(not_equals, bool(const AllocatorMock&));
+        MOCK_CONST_METHOD1_T(equals, bool(const AllocatorMock&));
+        MOCK_CONST_METHOD1_T(not_equals, bool(const AllocatorMock&));
         MOCK_METHOD1_T(destroy_impl, void(void*));
 
 

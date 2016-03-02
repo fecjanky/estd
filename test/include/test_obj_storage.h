@@ -73,7 +73,12 @@ public:
 
     void TearDown() override {
         using ::testing::_;
-        s_allocated_inline.deallocate();
+
+        if (s_allocated_inline.size() > s_allocated_inline.max_size()) {
+            EXPECT_CALL(s_allocated_inline.get_allocator(), deallocate(_, _)).Times(1);
+            s_allocated_inline.deallocate();
+        }
+
         if (s_allocated.size() > s_allocated.max_size()) {
             EXPECT_CALL(s_allocated.get_allocator(), deallocate(_, _)).Times(1);
             s_allocated.deallocate();
@@ -112,7 +117,7 @@ public:
 };
 
 template<class TestDescriptor>
-class TestInline : public TestNew<TestDescriptor> {
+class TestInlineAllocation : public TestNew<TestDescriptor> {
 public:
     using storage_t = typename TestNew<TestDescriptor>::storage_t;
     static constexpr auto ptr = (typename storage_t::pointer)0xc0dedead;
@@ -134,7 +139,7 @@ public:
 };
 
 template<class TestDescriptor>
-class TestAllocated: public TestNew<TestDescriptor> {
+class TestAllocation: public TestNew<TestDescriptor> {
 public:
     using storage_t = typename TestNew<TestDescriptor>::storage_t;
     static constexpr auto ptr = (typename storage_t::pointer)0xc0dedead;
@@ -158,10 +163,10 @@ public:
 
 
 TYPED_TEST_CASE_P(Test);
-TYPED_TEST_CASE_P(TestInline);
-TYPED_TEST_CASE_P(TestAllocated);
+TYPED_TEST_CASE_P(TestInlineAllocation);
+TYPED_TEST_CASE_P(TestAllocation);
 
-TYPED_TEST_P(TestInline, BasicAllocation)
+TYPED_TEST_P(TestInlineAllocation, BasicAllocation)
 {
     using BaseT = ::ObjStorageTest::TestNew<TypeParam>;
     constexpr auto alignment = BaseT::alignment;
@@ -183,11 +188,11 @@ TYPED_TEST_P(TestInline, BasicAllocation)
 }
 
 
-TYPED_TEST_P(TestAllocated, BasicAllocation)
+TYPED_TEST_P(TestAllocation, BasicAllocation)
 {
     using ::testing::_;
     using ::testing::Return;
-    using storage_t = typename TestAllocated<TypeParam>::storage_t;
+    using storage_t = typename TestAllocation<TypeParam>::storage_t;
     constexpr auto ptr = (typename storage_t::pointer)0xdeadbeef;
     using BaseT = ::ObjStorageTest::TestNew<TypeParam>;
     constexpr auto alignment = BaseT::alignment;
@@ -199,12 +204,10 @@ TYPED_TEST_P(TestAllocated, BasicAllocation)
         .WillOnce(Return(ptr));
 
     this->s.allocate(alloc_size);
-    auto allocated_uintp = reinterpret_cast<std::uintptr_t>(this->s.get());
-    auto diff  = allocated_uintp - reinterpret_cast<std::uintptr_t>(ptr);
-    
-    EXPECT_LT(diff,alignment);
+
+    EXPECT_EQ(::estd::impl::aligned_heap_addr(ptr,alignment),this->s.get());
     EXPECT_EQ(0U,reinterpret_cast<uintptr_t>(this->s.get()) % alignment);
-    EXPECT_CALL(this->s.get_allocator(), deallocate(ptr,_));
+    EXPECT_CALL(this->s.get_allocator(), deallocate(ptr,alloc_size + alignment));
     
     this->s.deallocate();
     
@@ -232,7 +235,7 @@ TYPED_TEST_P(Test, CopyAssignFromInlineToInline) {
 TYPED_TEST_P(Test, CopyAssignFromInlineToAllocated) {
     using ::testing::_;
     using ::testing::Return;
-    using BaseT = ::ObjStorageTest::TestAllocated<TypeParam>;
+    using BaseT = ::ObjStorageTest::TestAllocation<TypeParam>;
     using PropOnCCopy =  typename BaseT::PropOnCCopy;
     constexpr auto ptr = Test<TypeParam>::ptr;
 
@@ -251,9 +254,8 @@ TYPED_TEST_P(Test, CopyAssignFromAllocatedtoInline) {
     using ::testing::Return;
     using ::testing::DefaultValue;
 
-    using BaseT = ::ObjStorageTest::TestAllocated<TypeParam>;
+    using BaseT = ::ObjStorageTest::TestAllocation<TypeParam>;
     using PropOnCCopy =  typename BaseT::PropOnCCopy;
-    constexpr auto ptr = Test<TypeParam>::ptr;
 
     if (PropOnCCopy::value) {
         EXPECT_CALL(this->s_allocated_inline.get_allocator(), move_assign(_));
@@ -278,7 +280,6 @@ TYPED_TEST_P(Test, CopyAssignFromAllocatedtoAllocated) {
     using BaseT = ::ObjStorageTest::Test<TypeParam>;
     using PropOnCCopy = typename BaseT::PropOnCCopy;
     using storage_t = typename BaseT::storage_t;
-    constexpr auto ptr = Test<TypeParam>::ptr;
     constexpr auto alignment = BaseT::alignment;
     constexpr auto asize = storage_t::max_size() + 1;
     constexpr auto real_asize = asize + alignment;
@@ -322,17 +323,229 @@ TYPED_TEST_P(Test, CopyAssignFromAllocatedtoAllocated) {
         test.get());
 }
 
+TYPED_TEST_P(Test, MoveAssignFromInlineToInline) {
+    using ::testing::_;
+    using ::testing::Return;
+    using BaseT = ::ObjStorageTest::TestNew<TypeParam>;
+    using storage_t = typename BaseT::storage_t;
+    using PropOnCMove =  typename BaseT::PropOnCMove;
+
+    auto old_size = this->s_allocated_inline.size();
+
+    storage_t s2(1);
+
+    if (PropOnCMove::value) {
+        EXPECT_CALL(s2.get_allocator(), move_assign(_));
+    } else {
+        EXPECT_CALL(s2.get_allocator(), equals(_));
+    }
+
+    s2 = std::move(this->s_allocated_inline);
+
+    EXPECT_EQ(old_size,s2.size());
+    EXPECT_EQ(old_size,this->s_allocated_inline.size());
+}
+
+TYPED_TEST_P(Test, MoveAssignFromInlineToAllocated) {
+    using ::testing::_;
+    using ::testing::Return;
+    using BaseT = ::ObjStorageTest::TestAllocation<TypeParam>;
+    using PropOnCMove =  typename BaseT::PropOnCMove;
+    constexpr auto ptr = Test<TypeParam>::ptr;
+
+    auto old_size = this->s_allocated_inline.size();
+
+    if (PropOnCMove::value) {
+        EXPECT_CALL(this->s_allocated.get_allocator(), move_assign(_));
+    } else {
+        EXPECT_CALL(this->s_allocated.get_allocator(), equals(_));
+    }
+
+    EXPECT_CALL(this->s_allocated.get_allocator(),
+            deallocate(ptr,this->s_allocated.size()));
+
+    this->s_allocated = std::move(this->s_allocated_inline);
+
+    EXPECT_EQ(old_size,this->s_allocated.size());
+    EXPECT_EQ(old_size,this->s_allocated_inline.size());
+}
+
+TYPED_TEST_P(Test, MoveAssignFromAllocatedtoInlineComparesEq) {
+    using ::testing::_;
+    using ::testing::Return;
+    using BaseT = ::ObjStorageTest::TestAllocation<TypeParam>;
+    using PropOnCMove =  typename BaseT::PropOnCMove;
+    auto old_size = this->s_allocated.size();
+    auto old_ptr = this->s_allocated.get();
+
+    if (PropOnCMove::value) {
+        EXPECT_CALL(this->s_allocated_inline.get_allocator(), move_assign(_));
+    } else {
+        EXPECT_CALL(this->s_allocated_inline.get_allocator(), equals(_))
+                .WillOnce(Return(true));
+    }
+
+    this->s_allocated_inline = std::move(this->s_allocated);
+
+    EXPECT_EQ(old_size,this->s_allocated_inline.size());
+    EXPECT_EQ(old_ptr,this->s_allocated_inline.get());
+    EXPECT_EQ(0U,this->s_allocated.size());
+}
+
+TYPED_TEST_P(Test, MoveAssignFromAllocatedtoInlineComparesNEq) {
+    using ::testing::_;
+    using ::testing::Return;
+    using BaseT = ::ObjStorageTest::TestAllocation<TypeParam>;
+    using PropOnCMove =  typename BaseT::PropOnCMove;
+    auto old_size = this->s_allocated.size();
+    auto old_ptr = this->s_allocated.get();
+    auto test_ptr = Mock::pointer<uint8_t>(0xfefec0c0);
+
+    if (PropOnCMove::value) {
+        EXPECT_CALL(this->s_allocated_inline.get_allocator(), move_assign(_));
+    } else {
+        EXPECT_CALL(this->s_allocated_inline.get_allocator(), equals(_))
+                .WillOnce(Return(false));
+        EXPECT_CALL(this->s_allocated_inline.get_allocator(),
+                allocate(this->s_allocated.size()))
+                .WillOnce(Return(test_ptr));
+    }
+
+    this->s_allocated_inline = std::move(this->s_allocated);
+
+    EXPECT_EQ(old_size,this->s_allocated_inline.size());
+    if (PropOnCMove::value) {
+        EXPECT_EQ(old_ptr,this->s_allocated_inline.get());
+        EXPECT_EQ(0U,this->s_allocated.size());
+    } else {
+        EXPECT_EQ(test_ptr,this->s_allocated_inline.get());
+        EXPECT_EQ(old_size,this->s_allocated.size());
+    }
+}
+
+
+TYPED_TEST_P(Test, MoveAssignFromAllocatedtoAllocatedComparesEq) {
+    using ::testing::_;
+    using ::testing::Return;
+    using ::testing::DefaultValue;
+    using ::testing::InSequence;
+    using Allocator = typename TestNew<TypeParam>::Allocator;
+    using BaseT = ::ObjStorageTest::Test<TypeParam>;
+    using PropOnCMove = typename BaseT::PropOnCMove;
+    using storage_t = typename BaseT::storage_t;
+    constexpr auto alignment = BaseT::alignment;
+    constexpr auto asize = storage_t::max_size() + 1;
+    constexpr auto real_asize = asize + alignment;
+    auto init_ptr = Mock::pointer<uint8_t>(0xdefdefde);
+    constexpr auto ptr = Test<TypeParam>::ptr;
+
+    DefaultValue<typename Allocator::pointer>::
+        Set(Mock::pointer<typename Allocator::value_type>(init_ptr));
+
+    storage_t test(asize);
+
+    DefaultValue<typename Allocator::value_type>::Clear();
+
+    auto old_size = this->s_allocated.size();
+
+    EXPECT_CALL(test.get_allocator(), deallocate(ptr,old_size));
+    EXPECT_CALL(test.get_allocator(), deallocate(init_ptr, real_asize));
+
+    if (PropOnCMove::value) {
+        //Allocation is unexpect_callable in temp_allocator
+        InSequence d;
+        EXPECT_CALL(test.get_allocator(), move_assign(_));
+    } else {
+        InSequence d;
+        EXPECT_CALL(test.get_allocator(), equals(_))
+                .WillOnce(Return(true));
+    }
+
+    test = std::move(this->s_allocated);
+
+    EXPECT_EQ(old_size, test.size());
+    EXPECT_EQ(0U, this->s_allocated.size());
+    EXPECT_EQ(estd::impl::aligned_heap_addr(ptr,alignment),
+        test.get());
+}
+
+
+TYPED_TEST_P(Test, MoveAssignFromAllocatedtoAllocatedComparesNEq) {
+    using ::testing::_;
+    using ::testing::Return;
+    using ::testing::DefaultValue;
+    using ::testing::InSequence;
+    using Allocator = typename TestNew<TypeParam>::Allocator;
+    using BaseT = ::ObjStorageTest::Test<TypeParam>;
+    using PropOnCMove = typename BaseT::PropOnCMove;
+    using storage_t = typename BaseT::storage_t;
+    constexpr auto alignment = BaseT::alignment;
+    constexpr auto asize = storage_t::max_size() + 1;
+    constexpr auto real_asize = asize + alignment;
+    auto init_ptr = Mock::pointer<uint8_t>(0xdefdefde);
+    constexpr auto ptr = Test<TypeParam>::ptr;
+    auto test_ptr = Mock::pointer<uint8_t>(0xfefec0c0);
+
+    DefaultValue<typename Allocator::pointer>::
+        Set(Mock::pointer<typename Allocator::value_type>(init_ptr));
+
+    storage_t test(asize);
+
+    DefaultValue<typename Allocator::value_type>::Clear();
+
+    auto old_size = this->s_allocated.size();
+
+
+
+    if (PropOnCMove::value) {
+        EXPECT_CALL(test.get_allocator(), deallocate(ptr,old_size));
+        EXPECT_CALL(test.get_allocator(), deallocate(init_ptr, real_asize));
+        //Allocation is unexpect_callable in temp_allocator
+        EXPECT_CALL(test.get_allocator(), move_assign(_));
+    } else {
+        EXPECT_CALL(test.get_allocator(), deallocate(init_ptr,old_size));
+        EXPECT_CALL(test.get_allocator(), deallocate(test_ptr, real_asize));
+
+        EXPECT_CALL(test.get_allocator(), equals(_))
+                .WillOnce(Return(false));
+
+        EXPECT_CALL(test.get_allocator(), allocate(old_size))
+                .WillOnce(Return(test_ptr));
+    }
+
+    test = std::move(this->s_allocated);
+
+    EXPECT_EQ(old_size, test.size());
+    if (PropOnCMove::value) {
+        EXPECT_EQ(0U, this->s_allocated.size());
+        EXPECT_EQ(estd::impl::aligned_heap_addr(ptr,alignment),
+            test.get());
+    } else {
+        EXPECT_EQ(old_size, this->s_allocated.size());
+        EXPECT_EQ(estd::impl::aligned_heap_addr(test_ptr,alignment),
+            test.get());
+        EXPECT_EQ(estd::impl::aligned_heap_addr(ptr,alignment),
+                this->s_allocated.get());
+    }
+}
+
 
 REGISTER_TYPED_TEST_CASE_P(Test,
     CopyAssignFromInlineToInline,
     CopyAssignFromInlineToAllocated,
     CopyAssignFromAllocatedtoInline,
-    CopyAssignFromAllocatedtoAllocated
+    CopyAssignFromAllocatedtoAllocated,
+    MoveAssignFromInlineToInline,
+    MoveAssignFromInlineToAllocated,
+    MoveAssignFromAllocatedtoInlineComparesEq,
+    MoveAssignFromAllocatedtoInlineComparesNEq,
+    MoveAssignFromAllocatedtoAllocatedComparesEq,
+    MoveAssignFromAllocatedtoAllocatedComparesNEq
     );
 
-REGISTER_TYPED_TEST_CASE_P(TestAllocated,
+REGISTER_TYPED_TEST_CASE_P(TestAllocation,
     BasicAllocation);
-REGISTER_TYPED_TEST_CASE_P(TestInline,
+REGISTER_TYPED_TEST_CASE_P(TestInlineAllocation,
     BasicAllocation);
 
 /////////////////////////////////////////////

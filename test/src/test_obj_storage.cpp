@@ -72,15 +72,19 @@ using AllocationTestTypes = ::testing::Types<
     std::tuple<Size<4>, Size<8>, std::true_type, std::true_type, std::true_type, Size<8 * sizeof(void*)>>,
     std::tuple<Size<4>, Size<8>, std::false_type, std::true_type, std::true_type, Size<8 * sizeof(void*)>>,
     std::tuple<Size<4>, Size<8>, std::true_type, std::false_type, std::true_type, Size<8 * sizeof(void*)>>,
-    std::tuple<Size<4>, Size<8>, std::true_type, std::true_type, std::false_type, Size<8 * sizeof(void*)>>
+    std::tuple<Size<4>, Size<8>, std::true_type, std::true_type, std::false_type, Size<8 * sizeof(void*)>>,
+    std::tuple<Size<8>, Size<8>, std::true_type, std::true_type, std::true_type, Size<8 * sizeof(void*)>>,
+    std::tuple<Size<8>, Size<8>, std::false_type, std::true_type, std::true_type, Size<8 * sizeof(void*)>>,
+    std::tuple<Size<8>, Size<8>, std::true_type, std::false_type, std::true_type, Size<8 * sizeof(void*)>>,
+    std::tuple<Size<8>, Size<8>, std::true_type, std::true_type, std::false_type, Size<8 * sizeof(void*)>>
 >;
 
 
 INSTANTIATE_TYPED_TEST_CASE_P(ObjStorage, Test, AllocationTestTypes);
 
-INSTANTIATE_TYPED_TEST_CASE_P(ObjStorage, TestInline, AllocationTestInlineTypes);
+INSTANTIATE_TYPED_TEST_CASE_P(ObjStorage, TestInlineAllocation, AllocationTestInlineTypes);
 
-INSTANTIATE_TYPED_TEST_CASE_P(ObjStorage, TestAllocated, AllocationTestAllocatedTypes);
+INSTANTIATE_TYPED_TEST_CASE_P(ObjStorage, TestAllocation, AllocationTestAllocatedTypes);
 
 
 }

@@ -312,7 +312,7 @@ private:
         if (this != &rhs) {
             deallocate();
             obtain_rvalue(::std::move(rhs));
-            get_allocator() = ::std::move(rhs);
+            get_allocator() = ::std::move(rhs.get_allocator());
         }
         return *this;
     }
@@ -321,7 +321,7 @@ private:
     {
         if (this != &rhs) {
             // can obtain storage only if allocators compare to equal
-            if (get_allocator() == rhs) {
+            if (get_allocator() == rhs.get_allocator()) {
                 deallocate();
                 obtain_rvalue(::std::move(rhs));
             }
