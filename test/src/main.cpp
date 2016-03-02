@@ -34,8 +34,10 @@
 
 int PullInTestObjStorageLibrary();
 static int dummyObjStorage = PullInTestObjStorageLibrary();
+extern int func();
 
 GTEST_API_ int main(int argc, char **argv) {
+    func();
     printf("Running main() from " __FILE__ "\n");
     testing::InitGoogleMock(&argc, argv);
     return RUN_ALL_TESTS();

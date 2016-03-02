@@ -272,14 +272,14 @@ template<typename Impl, typename R,typename... Args,typename... F>
 struct interface_signature<Impl, R(Args...),F...> : public interface_signature<Impl,F...> {
     using interface_signature<Impl, F...>::operator();
     R operator()(Args... args) {
-        return Impl::invoke<R>(static_cast<Impl&>(*this), static_forward<Args>(args)...);
+        return Impl::template invoke<R>(static_cast<Impl&>(*this), static_forward<Args>(args)...);
     }
 };
 
 template<typename Impl, typename R, typename... Args>
 struct interface_signature<Impl, R(Args...)> {
     R operator()(Args... args) {
-        return Impl::invoke<R>(static_cast<Impl&>(*this), static_forward<Args>(args)...);
+        return Impl::template invoke<R>(static_cast<Impl&>(*this), static_forward<Args>(args)...);
     }
 };
 
@@ -300,10 +300,9 @@ struct function_view_t<IF, R(Args...)> {
     {
         static_assert(
                 sizeof...(Args) == sizeof...(AArgs) &&
-                impl::And<std::is_convertible<AArgs, Args>::value...>::value &&
-                std::is_convertible<decltype(IF::invoke<R>(std::declval<IF>(),std::declval<AArgs>()...)),R>::value ,
+                impl::And<std::is_convertible<AArgs, Args>::value...>::value ,
                 "Interface is not callable");
-        return i.invoke<R>(i,std::forward<AArgs>(args)...);
+        return i.template invoke<R>(i,std::forward<AArgs>(args)...);
     }
 
 private:
@@ -323,7 +322,7 @@ struct function_view_t<IF, void(Args...)> {
                 sizeof...(Args) == sizeof...(AArgs) &&
                 impl::And<std::is_convertible<AArgs, Args>::value...>::value,
                 "Interface is not callable");
-        i.invoke<void>(i, std::forward<AArgs>(args)...);
+        i.template invoke<void>(i, std::forward<AArgs>(args)...);
     }
 
 private:
