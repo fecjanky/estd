@@ -78,8 +78,9 @@ struct DefaultCloningPolicy {
 
     template<typename T, typename = ::std::enable_if_t<
             !::std::is_lvalue_reference<T>::value>>
-    static T* Move(T&& from, void* to)
+    static T* Move(T&& from, void* to) noexcept
     {
+        static_assert(noexcept(std::declval<T>().move(to)), "T is not noexcept moveable");
         return from.move(to);
     }
 };
@@ -449,11 +450,11 @@ template<
     typename CloningPolicy = impl::DefaultCloningPolicy,
     size_t storage_size = 4,  // in pointer size
     size_t alignment = alignof(::std::max_align_t),
-    template<typename > class Allocator = ::std::allocator
+    class Allocator = ::std::allocator<uint8_t>
 >
 class polymorphic_obj_storage_t {
 public:
-    using storage_t = obj_storage_t<storage_size, alignment,Allocator<uint8_t>>;
+    using storage_t = obj_storage_t<storage_size, alignment,Allocator>;
 
     using allocator_type = typename storage_t::allocator_type;
     using allocator_traits = ::std::allocator_traits<allocator_type>;
@@ -467,7 +468,7 @@ public:
         typename T,
         typename = ::std::enable_if_t<::std::is_base_of<type, ::std::decay_t<T>>::value>
     >
-    polymorphic_obj_storage_t(T&& t) :
+    explicit polymorphic_obj_storage_t(T&& t) :
         storage { sizeof(::std::decay_t<T>) },
         // using placement new for construction
         obj { ::new (storage.get()) ::std::decay_t<T>(std::forward<T>(t)) }
@@ -508,7 +509,7 @@ public:
     polymorphic_obj_storage_t& operator=(const polymorphic_obj_storage_t& rhs)
     {
         if (this != &rhs) {
-            destroy();
+            cleanup();
             storage = rhs.storage;
             obj = rhs.get() ?
                 CloningPolicy::Clone(*rhs.get(), storage.get()) : nullptr;
@@ -521,25 +522,53 @@ public:
     polymorphic_obj_storage_t& operator=(polymorphic_obj_storage_t&& rhs)
         noexcept(::std::is_nothrow_move_assignable<storage_t>::value)
     {
-        if (!rhs) {
-            destroy();
-            storage = ::std::move(rhs.storage);
-            return *this;
-        }
-
         if (this != &rhs) {
+            cleanup();
             // inline allocation case
-            if (rhs.storage.size() <= rhs.storage.max_size()) {
-                destroy();
-                storage.allocate(rhs.storage.size());
+            if (rhs.storage.size() > 0 &&
+                rhs.storage.size() <= rhs.storage.max_size()) {
+                storage = ::std::move(rhs.storage);
                 obj = CloningPolicy::Move(::std::move(*rhs.get()),
                         storage.get());
-            } else {
+            } else if (rhs.storage.size() > 0) {
                 move_assign_w_allocated_obj(::std::move(rhs),
                     ::std::is_nothrow_move_assignable<storage_t>{});
             }
+            else {
+                storage = ::std::move(rhs.storage);
+            }
         }
         return *this;
+    }
+
+    void swap(polymorphic_obj_storage_t& rhs) 
+        noexcept(noexcept(std::declval<storage_t>().swap(std::declval<storage_t>())))
+    {
+        auto& old_obj = *get();
+        auto& old_rhs_obj = *rhs.get();
+        storage.swap(rhs.storage);
+        // If both are inline allocated use 3 way move
+        if (storage.size() <= storage.max_size() && 
+            rhs.storage.size() <= rhs.storage.max_size()) {
+            storage_t temp(storage);
+            auto& tobj = *CloningPolicy::Move(::std::move(old_obj), temp.get());
+            obj = CloningPolicy::Move(::std::move(old_rhs_obj),get());
+            rhs.obj = CloningPolicy::Move(::std::move(tobj), rhs.storage.get());
+            tobj.~IF();
+        }
+        // If one was inline allocated move only the inline one
+        else if (storage.size() <= storage.max_size() && 
+            rhs.storage.size() > rhs.storage.max_size()) {
+            swap_w_inline_allocated(*this, std::move(old_rhs_obj),rhs,old_obj);
+        }
+        else if (rhs.storage.size() <= rhs.storage.max_size() &&
+            storage.size() > storage.max_size()) {
+            swap_w_inline_allocated(rhs, std::move(old_obj),*this,old_rhs_obj);
+        }
+        // just swap objects
+        else {
+            std::swap(obj, rhs.obj);
+        }
     }
 
     ~polymorphic_obj_storage_t()
@@ -583,19 +612,28 @@ public:
     }
 
 private:
+    static void swap_w_inline_allocated(polymorphic_obj_storage_t& dest, IF&& old_obj, 
+        polymorphic_obj_storage_t& src, IF& swapped_obj) noexcept
+    {
+        dest.obj = CloningPolicy::Move(::std::move(old_obj), dest.storage.get());
+        old_obj.~IF();
+        src.obj = &swapped_obj;
+    }
 
+    // precondition: object has been cleaned up, rhs has an active,
+    // non-inline allocated object
     void move_assign_w_allocated_obj(polymorphic_obj_storage_t&& rhs,
         ::std::true_type) noexcept
     {
-        destroy();
         storage = ::std::move(rhs.storage);
         ::std::swap(obj, rhs.obj);
     }
 
+    // precondition: object has been cleaned up, rhs has an active,
+    // non-inline allocated object
     void move_assign_w_allocated_obj(polymorphic_obj_storage_t&& rhs,
         ::std::false_type)
     {
-        destroy();
         // store old storage for comparison
         auto old_storage = rhs.storage.get();
         storage = ::std::move(rhs.storage);
@@ -642,7 +680,15 @@ template<size_t s,size_t a, class A>
 inline void swap(::estd::obj_storage_t<s,a,A>& lhs,::estd::obj_storage_t<s,a,A>& rhs)
 noexcept(noexcept(std::declval<::estd::obj_storage_t<s, a, A>>().swap(std::declval<::estd::obj_storage_t<s, a, A>>())))
 {
-    lhs.swap(::std::move(rhs));
+    lhs.swap(rhs);
+}
+
+template<class I,class C,size_t s, size_t a, class A>
+inline void swap(::estd::polymorphic_obj_storage_t<I,C,s, a, A>& lhs, ::estd::polymorphic_obj_storage_t<I,C,s, a, A>& rhs)
+noexcept(noexcept(std::declval<::estd::polymorphic_obj_storage_t<I, C, s, a, A>>()
+    .swap(std::declval<::estd::polymorphic_obj_storage_t<I, C, s, a, A>>())))
+{
+    lhs.swap(rhs);
 }
 
 }  // namespace std

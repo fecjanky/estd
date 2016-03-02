@@ -33,7 +33,11 @@
 #include "gtest/gtest.h"
 
 int PullInTestObjStorageLibrary();
+int PullInTestPolyObjStorageLibrary();
+
 static int dummyObjStorage = PullInTestObjStorageLibrary();
+static int dummyPolyObjStorage = PullInTestPolyObjStorageLibrary();
+
 extern int func();
 
 GTEST_API_ int main(int argc, char **argv) {
