@@ -291,14 +291,7 @@ private:
     obj_storage_t& copy_assign_impl(const obj_storage_t& rhs, ::std::false_type)
     {
         if (this != &rhs) {
-            // make allocator based allocation first to
-            // provide strong exception guarantee
-            pointer p{};
-            if (rhs.size() > rhs.max_size()) {
-                p = get_allocator().allocate(rhs.size());
-            }
-            deallocate();
-            assign_storage(p, rhs);
+            strong_copy_allocation(std::move(rhs));
         }
         return *this;
     }
@@ -327,16 +320,22 @@ private:
             }
             // need to reallocate with this allocator if not equal
             else {
-                // make allocation first to provide strong guarantee
-                pointer p{};
-                if (rhs.size() > rhs.max_size()) {
-                    p = get_allocator().allocate(rhs.size());
-                }
-                deallocate();
-                assign_storage(p, rhs);
+                strong_copy_allocation(rhs);
             }
         }
         return *this;
+    }
+
+    void strong_copy_allocation(const obj_storage_t& rhs)
+    {
+        // make allocator based allocation first to
+        // provide strong exception guarantee
+        pointer p{};
+        if (rhs.size() > rhs.max_size()) {
+            p = get_allocator().allocate(rhs.size());
+        }
+        deallocate();
+        assign_storage(p, rhs);
     }
 
     void swap_impl(obj_storage_t& rhs, ::std::true_type) noexcept
