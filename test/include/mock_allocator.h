@@ -124,6 +124,7 @@ namespace Mock {
         // TODO(fecjanky): find a way to add support for construct
 
         // Helpers
+        MOCK_METHOD1_T(swap, void(AllocatorMock&));
         MOCK_METHOD1_T(copy_assign, void(const AllocatorMock&));
         MOCK_METHOD1_T(move_assign, void(const AllocatorMock&));
         MOCK_CONST_METHOD1_T(equals, bool(const AllocatorMock&));
@@ -135,5 +136,12 @@ namespace Mock {
 
 }  // namespace Mock
 
+namespace std {
+template<typename T,class C,class M, class S>
+inline void swap(Mock::AllocatorMock<T,C,M,S>& lhs, Mock::AllocatorMock<T, C, M, S>& rhs) noexcept
+{
+    lhs.swap(rhs);
+}
 
+}  // namespace std
 #endif  // MOCK_ALLOCATOR_H_

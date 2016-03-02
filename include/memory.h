@@ -186,9 +186,9 @@ public:
         return move_assign_impl(::std::move(rhs), pocma{});
     }
 
-    void swap(obj_storage_t&& rhs) noexcept(pocs::value)
+    void swap(obj_storage_t& rhs) noexcept(pocs::value)
     {
-        swap_impl(::std::move(rhs),pocs{});
+        swap_impl(rhs,pocs{});
     }
 
     void* allocate(size_t n)
@@ -339,22 +339,22 @@ private:
         return *this;
     }
 
-    void swap_impl(obj_storage_t&& rhs, ::std::true_type) noexcept
+    void swap_impl(obj_storage_t& rhs, ::std::true_type) noexcept
     {
         ::std::swap(get_allocator(),rhs.get_allocator());
-        swap_guts(::std::move(rhs));
+        swap_guts(rhs);
     }
 
-    void swap_impl(obj_storage_t&& rhs, ::std::false_type)
+    void swap_impl(obj_storage_t& rhs, ::std::false_type)
     {
-        if(get_allocator() != rhs.get_allocator()) {
+        if(!(get_allocator() == rhs.get_allocator())) {
             throw ::std::runtime_error(
                     "obj_storage_t: swap attempt with unequal allocators ");
         }
-        swap_guts(::std::move(rhs));
+        swap_guts(rhs);
     }
 
-    void swap_guts(obj_storage_t&& rhs) noexcept{
+    void swap_guts(obj_storage_t& rhs) noexcept{
         ::std::swap(heap_storage,rhs.heap_storage);
         ::std::swap(size_,rhs.size_);
     }
@@ -638,8 +638,8 @@ using polymorphic_obj_storage = polymorphic_obj_storage_t<IF>;
 namespace std{
 
 template<size_t s,size_t a, class A>
-inline void swap(::estd::obj_storage_t<s,a,A>&& lhs,::estd::obj_storage_t<s,a,A>&& rhs)
-noexcept(noexcept(::estd::obj_storage_t<s,a,A>::swap(lhs,rhs)))
+inline void swap(::estd::obj_storage_t<s,a,A>& lhs,::estd::obj_storage_t<s,a,A>& rhs)
+noexcept(noexcept(std::declval<::estd::obj_storage_t<s, a, A>>().swap(std::declval<::estd::obj_storage_t<s, a, A>>())))
 {
     lhs.swap(::std::move(rhs));
 }
