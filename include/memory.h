@@ -140,18 +140,18 @@ public:
     using pointer = typename allocator_traits::pointer;
 
     obj_storage_t() :
-            storage { }, size_ { }
+            storage { }, heap_storage{}, size_ { }
     {
     }
 
     template<typename A> 
     obj_storage_t(::std::allocator_arg_t, A&& a) :
-        Allocator(::std::forward<A>(a)), storage { }, size_ { }
+        Allocator(::std::forward<A>(a)), storage { }, heap_storage{}, size_ { }
     {
     }
     
     explicit obj_storage_t(size_t n) :
-            storage { }, size_ { }
+            storage { }, heap_storage{},size_ { }
     {
         allocate(n);
     }
@@ -159,7 +159,7 @@ public:
     obj_storage_t(const obj_storage_t& rhs) :
         Allocator(
                 allocator_traits::select_on_container_copy_construction(
-                            rhs.get_allocator())), storage { }, size_ { }
+                            rhs.get_allocator())), storage { },heap_storage{}, size_ { }
     {
         if (rhs.size() > 0 && rhs.size() <= rhs.max_size()) {
             allocate_inline(rhs.size());
@@ -169,7 +169,7 @@ public:
     }
 
     obj_storage_t(obj_storage_t&& rhs) noexcept
-    : Allocator(::std::move(rhs)), heap_storage {}, size_ {}
+    : Allocator(::std::move(rhs)), storage{}, heap_storage {}, size_ {}
     {
         static_assert(::std::is_nothrow_move_constructible<allocator_type>::value,
             "allocator_type is not nothrow_move_constructible");
@@ -355,8 +355,7 @@ private:
     }
 
     void swap_guts(obj_storage_t&& rhs) noexcept{
-        // this implicitly swaps heap_storage ptrs as well
-        ::std::swap(storage,rhs.storage);
+        ::std::swap(heap_storage,rhs.heap_storage);
         ::std::swap(size_,rhs.size_);
     }
 
@@ -401,8 +400,7 @@ private:
             allocate_inline(rhs.size());
         }
         else if (rhs.size() > 0) {
-            ::std::swap(size_, rhs.size_);
-            ::std::swap(heap_storage, rhs.heap_storage);
+            swap_guts(::std::move(rhs));
         }
     }
 
@@ -413,7 +411,7 @@ private:
         if (rhs.size() > 0 && rhs.size() <= max_size_) {
             allocate_inline(rhs.size());
         }
-        // allocate inline else
+        // use allocated storage else
         else if (rhs.size() > 0) {
             heap_storage = p;
             size_ = rhs.size();
@@ -424,11 +422,8 @@ private:
     // Data members
     ///////////////
 
-    union alignas(alignment) {
-        ::std::array<::std::uint8_t,max_size_> storage;
-        ::std::uint8_t* heap_storage;
-    };
-
+    ::std::array<::std::uint8_t,max_size_> storage alignas(alignment);
+    ::std::uint8_t* heap_storage;
     size_t size_;
 };
 
