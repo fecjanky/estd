@@ -254,13 +254,12 @@ struct BindImpl: public Binder<IF, Impl, F...> {
 
     BindImpl* clone_implementation__(void* dest) const override
     {
-        return new (reinterpret_cast<BindImpl*>(dest)) BindImpl(*this);
+        return new (dest) BindImpl(*this);
     }
 
     BindImpl* move_implementation__(void* dest) noexcept override
     {
-        return new (reinterpret_cast<BindImpl*>(dest)) BindImpl(
-                std::move(*this));
+        return new (dest) BindImpl(std::move(*this));
     }
 
 };

@@ -422,6 +422,8 @@ private:
     ///////////////
 
     ::std::array<::std::uint8_t,max_size_> storage alignas(alignment);
+    // storing in union was considered, but this results in cleaner
+    // and more correct swap logic
     ::std::uint8_t* heap_storage;
     size_t size_;
 };
@@ -457,7 +459,7 @@ public:
     using allocator_traits = ::std::allocator_traits<allocator_type>;
     using type = IF;
     static_assert(::std::is_polymorphic<type>::value, "IF class is not polymorphic");
-    static_assert(::std::is_same<type, ::std::decay_t<type>>::value, "IF class must be cv unqualifed and not reference type");
+    static_assert(::std::is_same<type, ::std::decay_t<type>>::value, "IF class must be cv unqualifed and non-reference type");
     static_assert(noexcept(CloningPolicy::Move(::std::move(::std::declval<type>()), ::std::declval<void*>())),
         "IF type is not noexcept moveable");
 
@@ -467,15 +469,15 @@ public:
     >
     polymorphic_obj_storage_t(T&& t) :
         storage { sizeof(::std::decay_t<T>) },
-        obj { ::new (reinterpret_cast<::std::decay_t<T>*>(storage.get()))
-            ::std::decay_t<T>(std::forward<T>(t)) }
+        // using placement new for construction
+        obj { ::new (storage.get()) ::std::decay_t<T>(std::forward<T>(t)) }
     {
         static_assert( storage_t::is_alignment_ok(
                         impl::alignment_t<alignof(::std::decay_t<T>)> {}),
                 "T is not properly aligned");
     }
 
-    polymorphic_obj_storage_t() :
+    polymorphic_obj_storage_t() noexcept:
             storage { }, obj { }
     {
     }
@@ -545,27 +547,27 @@ public:
         destroy();
     }
 
-    type* get()
+    type* get() noexcept
     {
         return obj;
     }
 
-    const type* get() const
+    const type* get() const noexcept
     {
         return obj;
     }
 
-    operator bool()const
+    operator bool()const noexcept
     {
         return obj != nullptr;
     }
 
-    type* operator->()
+    type* operator->() noexcept
     {
         return obj;
     }
 
-    const type* operator->() const
+    const type* operator->() const noexcept
     {
         return obj;
     }
