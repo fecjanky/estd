@@ -8,7 +8,7 @@ int PullInTestPolyObjStorageLibrary() { return 0; }
 
 namespace PolyStorageTest {
 
-std::atomic<int> IF::index = 0;
+std::atomic<int> IF::index { 0 };
 
 TEST_F(PolyStorageBasicTest, ConstructionAndUse) {
 
@@ -25,7 +25,7 @@ TEST_F(PolyStorageBasicTest, DefaultConstruction) {
     estd::polymorphic_obj_storage_t<IF> t;
     EXPECT_EQ(nullptr, t.get());
     bool bt = t;
-    EXPECT_EQ(false, bt);
+    EXPECT_FALSE(bt);
 }
 
 TEST_F(PolyStorageBasicTest, CopyConstruction) {

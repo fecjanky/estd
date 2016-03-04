@@ -65,7 +65,7 @@ namespace Mock {
         using pointer = T*;
         using reference = T&;
         using const_pointer = const pointer;
-        using const_reference = const reference;
+        using const_reference = const T&;
         using size_type = size_t;
 
         using propagate_on_container_copy_assignment = PropOnCCopy;
@@ -75,7 +75,7 @@ namespace Mock {
         AllocatorMock() {}
         
         AllocatorMock(const AllocatorMock& a) : AllocatorBase<T>(a){}
-        AllocatorMock(AllocatorMock&& a) : AllocatorBase<T>(std::move(a)) {}
+        AllocatorMock(AllocatorMock&& a) noexcept : AllocatorBase<T>(std::move(a)) {}
 
         template<typename TT>
         AllocatorMock(const AllocatorMock<TT, PropOnCCopy, PropOnCMove, PropOnCSwap>& a) : AllocatorBase<T>(a) {}
@@ -124,7 +124,7 @@ namespace Mock {
         // TODO(fecjanky): find a way to add support for construct
 
         // Helpers
-        MOCK_METHOD1_T(swap, void(AllocatorMock&));
+        MOCK_METHOD1_T(swap_object, void(AllocatorMock&));
         MOCK_METHOD1_T(copy_assign, void(const AllocatorMock&));
         MOCK_METHOD1_T(move_assign, void(const AllocatorMock&));
         MOCK_CONST_METHOD1_T(equals, bool(const AllocatorMock&));
@@ -134,14 +134,12 @@ namespace Mock {
 
     };
 
+    template<typename T,class C,class M, class S>
+    inline void swap(Mock::AllocatorMock<T,C,M,S>& lhs, Mock::AllocatorMock<T, C, M, S>& rhs) noexcept
+    {
+        lhs.swap_object(rhs);
+    }
+
 }  // namespace Mock
 
-namespace std {
-template<typename T,class C,class M, class S>
-inline void swap(Mock::AllocatorMock<T,C,M,S>& lhs, Mock::AllocatorMock<T, C, M, S>& rhs) noexcept
-{
-    lhs.swap(rhs);
-}
-
-}  // namespace std
 #endif  // MOCK_ALLOCATOR_H_

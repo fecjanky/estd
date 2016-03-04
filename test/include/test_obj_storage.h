@@ -3,10 +3,14 @@
 
 #include <tuple>
 #include <cmath>
+#include <cstdint>
 
 #include "gtest/gtest.h"
+#include "gmock/gmock.h"
+
 #include "mock_allocator.h"
 #include "memory.h"
+
 
 namespace ObjStorageTest {
 
@@ -59,6 +63,7 @@ public:
     using PropOnCSwap = std::decay_t<decltype(std::get<4>(std::declval<TestDescriptor>()))>;
     static constexpr size_t alloc_size = std::decay_t<decltype(std::get<5>(std::declval<TestDescriptor>()))>::value;
     using Allocator = Mock::AllocatorMock<uint8_t, PropOnCCopy, PropOnCMove, PropOnCSwap>;
+    static constexpr uintptr_t ptr = 0xc0dedead;
 
     using storage_t = 
         estd::obj_storage_t<
@@ -99,7 +104,7 @@ template<class TestDescriptor>
 class Test : public TestNew<TestDescriptor> {
 public:
     using storage_t = typename TestNew<TestDescriptor>::storage_t;
-    static constexpr auto ptr = (typename storage_t::pointer)0xc0dedead;
+
     using PropOnCCopy = typename TestNew<TestDescriptor>::PropOnCCopy;
     using PropOnCMove = typename TestNew<TestDescriptor>::PropOnCMove;
     using PropOnCSwap = typename TestNew<TestDescriptor>::PropOnCSwap;
@@ -107,11 +112,13 @@ public:
 
     void SetUp() override {
         using ::testing::Return;
+        auto pptr = reinterpret_cast<typename storage_t::pointer>
+                        (TestNew<TestDescriptor>::ptr);
         this->s_allocated_inline.allocate(0);
         EXPECT_CALL(this->s_allocated.get_allocator(),
                 allocate(this->s_allocated.max_size() + 1 + alignment))
             .Times(1)
-            .WillOnce(Return(ptr));
+            .WillOnce(Return(pptr));
         this->s_allocated.allocate(this->s_allocated.max_size() + 1);
     }
 };
@@ -120,7 +127,6 @@ template<class TestDescriptor>
 class TestInlineAllocation : public TestNew<TestDescriptor> {
 public:
     using storage_t = typename TestNew<TestDescriptor>::storage_t;
-    static constexpr auto ptr = (typename storage_t::pointer)0xc0dedead;
     using PropOnCCopy = typename TestNew<TestDescriptor>::PropOnCCopy;
     using PropOnCMove = typename TestNew<TestDescriptor>::PropOnCMove;
     using PropOnCSwap = typename TestNew<TestDescriptor>::PropOnCSwap;
@@ -128,11 +134,13 @@ public:
 
     void SetUp() override {
         using ::testing::Return;
+        auto pptr = reinterpret_cast<typename storage_t::pointer>
+            (TestNew<TestDescriptor>::ptr);
         this->s_allocated_inline.allocate(this->alloc_size);
         EXPECT_CALL(this->s_allocated.get_allocator(),
                 allocate(this->s_allocated.max_size() + 1 + alignment))
             .Times(1)
-            .WillOnce(Return(ptr));
+            .WillOnce(Return(pptr));
         this->s_allocated.allocate(this->s_allocated.max_size()+1);
     }
 
@@ -142,7 +150,6 @@ template<class TestDescriptor>
 class TestAllocation: public TestNew<TestDescriptor> {
 public:
     using storage_t = typename TestNew<TestDescriptor>::storage_t;
-    static constexpr auto ptr = (typename storage_t::pointer)0xc0dedead;
     using PropOnCCopy = typename TestNew<TestDescriptor>::PropOnCCopy;
     using PropOnCMove = typename TestNew<TestDescriptor>::PropOnCMove;
     using PropOnCSwap = typename TestNew<TestDescriptor>::PropOnCSwap;
@@ -151,11 +158,14 @@ public:
 
     void SetUp() override {
         using ::testing::Return;
+        auto pptr = reinterpret_cast<typename storage_t::pointer>
+            (TestNew<TestDescriptor>::ptr);
+
         this->s_allocated_inline.allocate(0);
         EXPECT_CALL(this->s_allocated.get_allocator(),
                 allocate(alloc_size + alignment))
             .Times(1)
-            .WillOnce(Return(ptr));
+            .WillOnce(Return(pptr));
         this->s_allocated.allocate(this->alloc_size);
     }
 
@@ -193,7 +203,7 @@ TYPED_TEST_P(TestAllocation, BasicAllocation)
     using ::testing::_;
     using ::testing::Return;
     using storage_t = typename TestAllocation<TypeParam>::storage_t;
-    constexpr auto ptr = (typename storage_t::pointer)0xdeadbeef;
+    auto ptr = (typename storage_t::pointer)0xdeadbeef;
     using BaseT = ::ObjStorageTest::TestNew<TypeParam>;
     constexpr auto alignment = BaseT::alignment;
     constexpr auto alloc_size = BaseT::alloc_size;
@@ -236,8 +246,9 @@ TYPED_TEST_P(Test, CopyAssignFromInlineToAllocated) {
     using ::testing::_;
     using ::testing::Return;
     using BaseT = ::ObjStorageTest::TestAllocation<TypeParam>;
+    using storage_t = typename BaseT::storage_t;
     using PropOnCCopy =  typename BaseT::PropOnCCopy;
-    constexpr auto ptr = Test<TypeParam>::ptr;
+    auto ptr = reinterpret_cast<typename storage_t::pointer>(Test<TypeParam>::ptr);
 
     if (PropOnCCopy::value) {
         EXPECT_CALL(this->s_allocated.get_allocator(), move_assign(_));
@@ -351,8 +362,8 @@ TYPED_TEST_P(Test, MoveAssignFromInlineToAllocated) {
     using ::testing::Return;
     using BaseT = ::ObjStorageTest::TestAllocation<TypeParam>;
     using PropOnCMove =  typename BaseT::PropOnCMove;
-    constexpr auto ptr = Test<TypeParam>::ptr;
-
+    using storage_t = typename BaseT::storage_t;
+    auto ptr = reinterpret_cast<typename storage_t::pointer>(Test<TypeParam>::ptr);
     auto old_size = this->s_allocated_inline.size();
 
     if (PropOnCMove::value) {
@@ -437,7 +448,7 @@ TYPED_TEST_P(Test, MoveAssignFromAllocatedtoAllocatedComparesEq) {
     constexpr auto asize = storage_t::max_size() + 1;
     constexpr auto real_asize = asize + alignment;
     auto init_ptr = Mock::pointer<uint8_t>(0xdefdefde);
-    constexpr auto ptr = Test<TypeParam>::ptr;
+    auto ptr = reinterpret_cast<typename storage_t::pointer>(Test<TypeParam>::ptr);
 
     DefaultValue<typename Allocator::pointer>::
         Set(Mock::pointer<typename Allocator::value_type>(init_ptr));
@@ -483,7 +494,7 @@ TYPED_TEST_P(Test, MoveAssignFromAllocatedtoAllocatedComparesNEq) {
     constexpr auto asize = storage_t::max_size() + 1;
     constexpr auto real_asize = asize + alignment;
     auto init_ptr = Mock::pointer<uint8_t>(0xdefdefde);
-    constexpr auto ptr = Test<TypeParam>::ptr;
+    auto ptr = reinterpret_cast<typename storage_t::pointer>(Test<TypeParam>::ptr);
     auto test_ptr = Mock::pointer<uint8_t>(0xfefec0c0);
 
     DefaultValue<typename Allocator::pointer>::
@@ -544,14 +555,14 @@ TYPED_TEST_P(Test, SwapFromInlineToInline) {
     ASSERT_NE(t.size(), i_size);
 
     if (PropOnCSwap::value) {
-        EXPECT_CALL(t.get_allocator(), swap(_));
+        EXPECT_CALL(t.get_allocator(), swap_object(_));
     }
     else {
         EXPECT_CALL(t.get_allocator(), equals(_))
             .WillOnce(Return(true));
     }
-
-    std::swap(std::move(t),std::move(this->s_allocated_inline));
+    using std::swap;
+    swap(t,this->s_allocated_inline);
 
     EXPECT_EQ(i_size, t.size());
     EXPECT_EQ(storage_t::max_size(), this->s_allocated_inline.size());
@@ -562,7 +573,6 @@ TYPED_TEST_P(Test, SwapFromInlineToAllocated) {
     using ::testing::Return;
     using ::testing::ByRef;
     using BaseT = ::ObjStorageTest::TestAllocation<TypeParam>;
-    using storage_t = typename BaseT::storage_t;
     using PropOnCSwap = typename BaseT::PropOnCSwap;
 
     auto i_size = this->s_allocated_inline.size();
@@ -570,21 +580,22 @@ TYPED_TEST_P(Test, SwapFromInlineToAllocated) {
     auto ptr = this->s_allocated.get();
 
     if (PropOnCSwap::value) {
-        EXPECT_CALL(this->s_allocated.get_allocator(), swap(_)).Times(2);
+        EXPECT_CALL(this->s_allocated.get_allocator(), swap_object(_)).Times(2);
     }
     else {
         EXPECT_CALL(this->s_allocated.get_allocator(), equals(_))
             .WillRepeatedly(Return(true));
     }
 
-    std::swap(this->s_allocated, std::move(this->s_allocated_inline));
+    using std::swap;
+    swap(this->s_allocated, this->s_allocated_inline);
 
     EXPECT_EQ(i_size, this->s_allocated.size());
     EXPECT_EQ(a_size, this->s_allocated_inline.size());
     EXPECT_EQ(ptr, this->s_allocated_inline.get());
     EXPECT_NE(ptr, this->s_allocated.get());
 
-    std::swap(this->s_allocated, std::move(this->s_allocated_inline));
+    swap(this->s_allocated, this->s_allocated_inline);
 
     EXPECT_EQ(a_size, this->s_allocated.size());
     EXPECT_EQ(i_size, this->s_allocated_inline.size());
@@ -600,7 +611,6 @@ TYPED_TEST_P(Test, SwapFromAllocatedToAllocatedComparesEq) {
     using storage_t = typename BaseT::storage_t;
     using PropOnCSwap = typename BaseT::PropOnCSwap;
     auto test_ptr = Mock::pointer<uint8_t>(0xfefec0c0);
-    constexpr auto alignment = BaseT::alignment;
     constexpr auto alloc_size = storage_t::max_size() * 10;
 
     storage_t t;
@@ -617,14 +627,14 @@ TYPED_TEST_P(Test, SwapFromAllocatedToAllocatedComparesEq) {
     auto t_ptr = t.get();
 
     if (PropOnCSwap::value) {
-        EXPECT_CALL(this->s_allocated.get_allocator(), swap(_));
+        EXPECT_CALL(this->s_allocated.get_allocator(), swap_object(_));
     }
     else {
         EXPECT_CALL(this->s_allocated.get_allocator(), equals(_))
             .WillRepeatedly(Return(true));
     }
 
-    std::swap(this->s_allocated, t);
+    swap(this->s_allocated, t);
 
     EXPECT_EQ(t_size, this->s_allocated.size());
     EXPECT_EQ(a_size,t.size());
@@ -640,7 +650,6 @@ TYPED_TEST_P(Test, SwapFromAllocatedToAllocatedComparesNEq) {
     using storage_t = typename BaseT::storage_t;
     using PropOnCSwap = typename BaseT::PropOnCSwap;
     auto test_ptr = Mock::pointer<uint8_t>(0xfefec0c0);
-    constexpr auto alignment = BaseT::alignment;
     constexpr auto alloc_size = storage_t::max_size() * 10;
 
     storage_t t;
@@ -655,10 +664,10 @@ TYPED_TEST_P(Test, SwapFromAllocatedToAllocatedComparesNEq) {
     auto a_size = this->s_allocated.size();
     auto ptr = this->s_allocated.get();
     auto t_ptr = t.get();
-
+    using std::swap;
     if (PropOnCSwap::value) {
-        EXPECT_CALL(this->s_allocated.get_allocator(), swap(_));
-        std::swap(this->s_allocated, t);
+        EXPECT_CALL(this->s_allocated.get_allocator(), swap_object(_));
+        swap(this->s_allocated, t);
         EXPECT_EQ(t_size, this->s_allocated.size());
         EXPECT_EQ(a_size, t.size());
         EXPECT_EQ(ptr, t.get());
@@ -667,7 +676,7 @@ TYPED_TEST_P(Test, SwapFromAllocatedToAllocatedComparesNEq) {
     else {
         EXPECT_CALL(this->s_allocated.get_allocator(), equals(_))
             .WillRepeatedly(Return(false));
-        EXPECT_THROW(std::swap(this->s_allocated, t),std::exception);
+        EXPECT_THROW(swap(this->s_allocated, t),std::exception);
     }
 }
 

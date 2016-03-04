@@ -26,6 +26,7 @@
 #include <memory>
 #include <cstddef>
 #include <stdexcept>
+#include <algorithm>
 
 namespace estd {
 
@@ -187,7 +188,7 @@ public:
         return move_assign_impl(::std::move(rhs), pocma{});
     }
 
-    void swap(obj_storage_t& rhs) noexcept(pocs::value)
+    void swap_object(obj_storage_t& rhs) noexcept(pocs::value)
     {
         swap_impl(rhs,pocs{});
     }
@@ -341,7 +342,8 @@ private:
 
     void swap_impl(obj_storage_t& rhs, ::std::true_type) noexcept
     {
-        ::std::swap(get_allocator(),rhs.get_allocator());
+        using std::swap;
+        swap(get_allocator(),rhs.get_allocator());
         swap_guts(rhs);
     }
 
@@ -355,8 +357,9 @@ private:
     }
 
     void swap_guts(obj_storage_t& rhs) noexcept{
-        ::std::swap(heap_storage,rhs.heap_storage);
-        ::std::swap(size_,rhs.size_);
+        using std::swap;
+        swap(heap_storage,rhs.heap_storage);
+        swap(size_,rhs.size_);
     }
 
     // precondition: this storage is in deallocated state
@@ -400,7 +403,7 @@ private:
             allocate_inline(rhs.size());
         }
         else if (rhs.size() > 0) {
-            swap_guts(::std::move(rhs));
+            swap_guts(rhs);
         }
     }
 
@@ -541,9 +544,10 @@ public:
         return *this;
     }
 
-    void swap(polymorphic_obj_storage_t& rhs) 
-        noexcept(noexcept(std::declval<storage_t>().swap(std::declval<storage_t>())))
+    void swap_object(polymorphic_obj_storage_t& rhs)
+        noexcept(noexcept(std::declval<storage_t&>().swap(std::declval<storage_t&>())))
     {
+        using std::swap;
         auto& old_obj = *get();
         auto& old_rhs_obj = *rhs.get();
         storage.swap(rhs.storage);
@@ -567,7 +571,7 @@ public:
         }
         // just swap objects
         else {
-            std::swap(obj, rhs.obj);
+            swap(obj, rhs.obj);
         }
     }
 
@@ -625,8 +629,9 @@ private:
     void move_assign_w_allocated_obj(polymorphic_obj_storage_t&& rhs,
         ::std::true_type) noexcept
     {
+        using std::swap;
         storage = ::std::move(rhs.storage);
-        ::std::swap(obj, rhs.obj);
+        swap(obj, rhs.obj);
     }
 
     // precondition: object has been cleaned up, rhs has an active,
@@ -634,12 +639,13 @@ private:
     void move_assign_w_allocated_obj(polymorphic_obj_storage_t&& rhs,
         ::std::false_type)
     {
+        using std::swap;
         // store old storage for comparison
         auto old_storage = rhs.storage.get();
         storage = ::std::move(rhs.storage);
         // if no reallocation happened, swap obj pointers
         if (old_storage == storage.get()) {
-            ::std::swap(obj, rhs.obj);
+            swap(obj, rhs.obj);
         }
         // else move object to newly allocated storage
         else {
@@ -672,26 +678,24 @@ private:
 template<typename IF>
 using polymorphic_obj_storage = polymorphic_obj_storage_t<IF>;
 
-}  //namespace estd
-
-namespace std{
 
 template<size_t s,size_t a, class A>
-inline void swap(::estd::obj_storage_t<s,a,A>& lhs,::estd::obj_storage_t<s,a,A>& rhs)
-noexcept(noexcept(std::declval<::estd::obj_storage_t<s, a, A>>().swap(std::declval<::estd::obj_storage_t<s, a, A>>())))
+inline void swap(obj_storage_t<s,a,A>& lhs ,obj_storage_t<s,a,A>& rhs)
+noexcept(noexcept(std::declval<::estd::obj_storage_t<s, a, A>&>()
+        .swap_object(std::declval<::estd::obj_storage_t<s, a, A>&>())))
 {
-    lhs.swap(rhs);
+    lhs.swap_object(rhs);
 }
 
 template<class I,class C,size_t s, size_t a, class A>
-inline void swap(::estd::polymorphic_obj_storage_t<I,C,s, a, A>& lhs, ::estd::polymorphic_obj_storage_t<I,C,s, a, A>& rhs)
-noexcept(noexcept(std::declval<::estd::polymorphic_obj_storage_t<I, C, s, a, A>>()
-    .swap(std::declval<::estd::polymorphic_obj_storage_t<I, C, s, a, A>>())))
+inline void swap(polymorphic_obj_storage_t<I,C,s, a, A>& lhs, polymorphic_obj_storage_t<I,C,s, a, A>& rhs)
+noexcept(noexcept(std::declval<::estd::polymorphic_obj_storage_t<I, C, s, a, A>&>()
+    .swap_object(std::declval<::estd::polymorphic_obj_storage_t<I, C, s, a, A>&>())))
 {
-    lhs.swap(rhs);
+    lhs.swap_object(rhs);
 }
 
-}  // namespace std
+}  //namespace estd
 
 
 #endif  /* MEMORY_H_ */

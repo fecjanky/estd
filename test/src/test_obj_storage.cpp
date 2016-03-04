@@ -1,10 +1,8 @@
 #include <exception>
 #include <tuple>
 
-#include "gtest/gtest.h"
-#include "memory.h"
 #include "test_obj_storage.h"
-#include "mock_allocator.h"
+
 
 #ifdef _MSC_VER
 __declspec(dllexport)
