@@ -72,12 +72,13 @@ TEST_F(PolyStorageBasicTest, MoveAssignment) {
 TEST_F(PolyStorageBasicTest, SwapMixed) {
     auto i_s1 = s1->get_index();
     auto i_s2 = s2->get_index();
-    std::swap(s1, s2);
+    using std::swap;
+    swap(s1, s2);
     EXPECT_EQ(IF::from_impl1, s2->func());
     EXPECT_EQ(IF::from_impl2, s1->func());
     EXPECT_EQ(i_s1,s2->get_index());
     EXPECT_EQ(i_s2,s1->get_index());
-    std::swap(s1, s2);
+    swap(s1, s2);
     EXPECT_EQ(IF::from_impl1, s1->func());
     EXPECT_EQ(IF::from_impl2, s2->func());
     EXPECT_EQ(i_s1, s1->get_index());
@@ -88,7 +89,8 @@ TEST_F(PolyStorageBasicTest, SwapInline) {
     auto i_s1 = s1->get_index();
     estd::polymorphic_obj_storage_t<IF> t1(Impl1{});
     auto i_t1 = t1->get_index();
-    std::swap(s1, t1);
+    using std::swap;
+    swap(s1, t1);
     EXPECT_EQ(IF::from_impl1, s1->func());
     EXPECT_EQ(IF::from_impl1, t1->func());
     EXPECT_EQ(i_s1, t1->get_index());
@@ -101,7 +103,7 @@ TEST_F(PolyStorageBasicTest, SwapAllocated) {
     estd::polymorphic_obj_storage_t<IF> t2(Impl2{});
     auto i_t2 = t2->get_index();
     auto p_t2 = t2.get();
-    std::swap(s2, t2);
+    swap(s2, t2);
     EXPECT_EQ(IF::from_impl2, s2->func());
     EXPECT_EQ(IF::from_impl2, t2->func());
     EXPECT_EQ(i_t2, s2->get_index());

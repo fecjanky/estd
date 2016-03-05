@@ -481,6 +481,21 @@ public:
                 "T is not properly aligned");
     }
 
+    template<
+        typename A,
+        typename T,
+        typename = ::std::enable_if_t<::std::is_base_of<type, ::std::decay_t<T>>::value>
+    >
+    explicit polymorphic_obj_storage_t(std::allocator_arg_t,A&& a, T&& t) :
+        storage { std::allocator_arg,std::forward<A>(a), sizeof(::std::decay_t<T>) },
+        // using placement new for construction
+        obj { ::new (storage.get()) ::std::decay_t<T>(std::forward<T>(t)) }
+    {
+        static_assert( storage_t::is_alignment_ok(
+                        impl::alignment_t<alignof(::std::decay_t<T>)> {}),
+                "T is not properly aligned");
+    }
+
     polymorphic_obj_storage_t() noexcept:
             storage { }, obj { }
     {
@@ -545,12 +560,12 @@ public:
     }
 
     void swap_object(polymorphic_obj_storage_t& rhs)
-        noexcept(noexcept(std::declval<storage_t&>().swap(std::declval<storage_t&>())))
+        noexcept(noexcept(std::declval<storage_t&>().swap_object(std::declval<storage_t&>())))
     {
         using std::swap;
         auto& old_obj = *get();
         auto& old_rhs_obj = *rhs.get();
-        storage.swap(rhs.storage);
+        storage.swap_object(rhs.storage);
         // If both are inline allocated use 3 way move
         if (storage.size() <= storage.max_size() && 
             rhs.storage.size() <= rhs.storage.max_size()) {

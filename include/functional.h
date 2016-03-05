@@ -334,54 +334,80 @@ function_view_t<IF, F> function_view(IF& i)
     return function_view_t<IF, F>(i);
 }
 
-template<typename ... Fs>
-struct interface : public impl::interface_signature<interface<Fs...>,Fs...> {
+template<class Allocator, typename ... Fs>
+struct interface_t : public impl::interface_signature<interface_t<Allocator,Fs...>,Fs...> {
 
     using if_t = impl::IInterface<Fs...>;
-    using impl::interface_signature<interface<Fs...>, Fs...>::operator();
+    using impl::interface_signature<interface_t<Allocator,Fs...>, Fs...>::operator();
+    static constexpr size_t max_storage_size = 4;
+    using poly_obj_storage =
+            polymorphic_obj_storage_t<
+                if_t,
+                impl::IInterfaceCloningPolicy,
+                max_storage_size,
+                alignof(::std::max_align_t),
+                Allocator
+                >;
+
+    interface_t() = default;
 
     template<typename T, typename = std::enable_if_t<
-            !std::is_base_of<interface, std::decay_t<T>>::value> > explicit interface(
-            T&& t) :
-            impl_ { impl::BindImpl<if_t, std::decay_t<T>, Fs...>(
+            !std::is_base_of<interface_t, std::decay_t<T>>::value> >
+    explicit interface_t(T&& t) :
+            obj { impl::BindImpl<if_t, std::decay_t<T>, Fs...>(
                     std::forward<T>(t)) }
     {
     }
 
-    interface(const interface& i) = default;
-    interface& operator =(const interface& i) = default;
-    interface(interface&& i) = default;
-    interface& operator =(interface&& i) = default;
+    template<class A,typename T, typename = std::enable_if_t<
+            !std::is_base_of<interface_t, std::decay_t<T>>::value> >
+    explicit interface_t(std::allocator_arg_t,A&& a, T&& t) :
+            obj {std::allocator_arg,std::forward<A>(a),
+                 impl::BindImpl<if_t, std::decay_t<T>, Fs...>(std::forward<T>(t)) }
+    {
+    }
 
-    ~interface() = default;
+    interface_t(const interface_t& i) = default;
+    interface_t& operator =(const interface_t& i) = default;
+    interface_t(interface_t&& i)
+        noexcept(std::is_nothrow_move_constructible<poly_obj_storage>::value) = default;
+    interface_t& operator =(interface_t&& i)
+        noexcept(std::is_nothrow_move_assignable<poly_obj_storage>::value) = default;
+
+    ~interface_t() = default;
 
     template<typename R, typename ... Args>
     static std::enable_if_t<!std::is_same<void, R>::value, R> invoke(
-        interface& i, Args&&... args)
+        interface_t& i, Args&&... args)
     {
         i.check();
-        return i.impl_->call_function__(std::forward<Args>(args)...);
+        return i.obj->call_function__(std::forward<Args>(args)...);
     }
 
     template<typename R, typename ... Args>
-    static std::enable_if_t<std::is_same<void, R>::value> invoke(interface& i,Args&&... args)
+    static std::enable_if_t<std::is_same<void, R>::value> invoke(interface_t& i,Args&&... args)
     {
         i.check();
-        i.impl_->call_function__(std::forward<Args>(args)...);
+        i.obj->call_function__(std::forward<Args>(args)...);
     }
 
 private:
     void check()
     {
-        if (!impl_)
+        if (!obj)
             throw std::bad_function_call {};
     }
 
-    polymorphic_obj_storage_t<if_t, impl::IInterfaceCloningPolicy> impl_;
+    poly_obj_storage obj;
 };
 
+template<typename... F>
+using interface = interface_t<std::allocator<uint8_t>,F...>;
+
 template<typename F>
-using function = interface<F>;
+using function = interface_t<F>;
+
+
 
 }  // namespace estd
 
