@@ -65,7 +65,7 @@ TEST(ObjStorageTest, heap_allocation_happens_when_allocation_size_is_greater_tha
 
 TEST(ObjStorageTest, zero_size_allocation_results_in_size_1) {
     estd::obj_storage o1{};
-    o1.allocate(1);
+    o1.allocate(0);
     EXPECT_EQ(1,o1.size());
 }
 
