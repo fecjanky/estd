@@ -1,8 +1,10 @@
 #include <exception>
 #include <tuple>
 
+#include "memory.h"
 #include "test_obj_storage.h"
-
+#include "gtest\gtest.h"
+#include "gmock\gmock.h"
 
 #ifdef _MSC_VER
 __declspec(dllexport)
@@ -11,28 +13,69 @@ int PullInTestObjStorageLibrary() { return 0; }
 
 namespace ObjStorageTest {
 
-TEST(ObjStorageBasicTest, DefaultConstruction) {
-    obj_storage_test o;
-    ASSERT_EQ(def_storage_size*sizeof(void*), o.max_size());
-    EXPECT_EQ(true, o.get_allocator().def_constructed);
-    EXPECT_EQ(0U, o.size());
+bool inline_allocation_happened(estd::obj_storage& o) {
+    o.get_checked();
+    auto obj_addr = reinterpret_cast<uintptr_t>(&o);
+    auto alloc_addr = reinterpret_cast<uintptr_t>(o.get());
+    return o.get() && (alloc_addr - obj_addr) < sizeof(o);
+}
+
+TEST(ObjStorageTest, size_is_0_after_default_construction) {
+    estd::obj_storage o{};
+    EXPECT_EQ(0, o.size());
+}
+
+TEST(ObjStorageTest, pointer_obtained_with_get_is_nullptr_after_default_construction) {
+    estd::obj_storage o{};
     EXPECT_EQ(nullptr, o.get());
-    EXPECT_THROW(o.get_checked(), std::exception);
+}
+
+TEST(ObjStorageTest, get_checked_throws_exception_when_default_constructed) {
+     EXPECT_THROW(estd::obj_storage{}.get_checked(), std::exception);
+}
+
+TEST(ObjStorageTest, max_size_is_integral_multiple_of_pointer_size) {
+    EXPECT_EQ(0, estd::obj_storage::max_size() % sizeof(void*));
+}
+
+TEST(ObjStorageTest, max_size_is_greater_or_equal_than_pointer_size) {
+    EXPECT_GE(estd::obj_storage::max_size(), sizeof(void*));
 }
 
 
-TEST(ObjStorageBasicTest, AllocatorCopyConstruction) {
-    Mock::AllocatorMock<uint8_t> a;
-    obj_storage_test o(std::allocator_arg_t{}, a);
-    EXPECT_EQ(true, o.get_allocator().copy_constructed);
+TEST(ObjStorageTest, size_is_greater_or_equal_to_allocation_size_after_allocation) {
+    estd::obj_storage o1{}, o2{};
+    o1.allocate(10);
+    o2.allocate(100);
+    EXPECT_GE(o1.size(), 10);
+    EXPECT_GE(o2.size(), 100);
 }
 
-
-TEST(ObjStorageBasicTest, AllocatorMoveConstruction) {
-    Mock::AllocatorMock<uint8_t> a;
-    obj_storage_test o(std::allocator_arg_t{}, std::move(a));
-    EXPECT_EQ(true, o.get_allocator().move_constructed);
+TEST(ObjStorageTest, inline_allocation_happens_when_allocation_size_is_less_than_or_equals_to_max_size) {
+    estd::obj_storage o1{};
+    o1.allocate(estd::obj_storage::max_size());
+    EXPECT_TRUE(inline_allocation_happened(o1));
 }
+
+TEST(ObjStorageTest, heap_allocation_happens_when_allocation_size_is_greater_than_max_size) {
+    estd::obj_storage o1{};
+    o1.allocate(estd::obj_storage::max_size()+1);
+    EXPECT_FALSE(inline_allocation_happened(o1));
+}
+
+TEST(ObjStorageTest, zero_size_allocation_results_in_size_1) {
+    estd::obj_storage o1{};
+    o1.allocate(1);
+    EXPECT_EQ(1,o1.size());
+}
+
+TEST(ObjStorageTest, same_size_storages_compares_equal) {
+    using ::testing::Eq;
+    estd::obj_storage obj_0_1{100}, obj_0_2{100};
+    ASSERT_TRUE(obj_0_1.get_allocator() == obj_0_2.get_allocator());
+    EXPECT_TRUE(obj_0_1 == obj_0_2);
+}
+
 
 
 INSTANTIATE_TEST_CASE_P(

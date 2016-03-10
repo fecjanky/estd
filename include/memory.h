@@ -438,7 +438,7 @@ template<size_t s, size_t a, class A>
 bool operator==(const obj_storage_t<s, a, A>& lhs,
         const obj_storage_t<s, a, A>& rhs) noexcept
 {
-    return (!lhs && !rhs) || ((lhs && rhs) && (lhs.get() == rhs.get()));
+    return lhs.size() == rhs.size() && lhs.get_allocator() == lhs.get_allocator();
 }
 
 template<size_t s, size_t a, class A>
