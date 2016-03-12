@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.1.3)
+cmake_minimum_required(VERSION 2.8.1)
 
 enable_testing()
 
@@ -13,8 +13,7 @@ target_include_directories(estd_test PUBLIC ../../googletest/googlemock/include/
 target_include_directories(estd_test PUBLIC ../../include/)
 target_include_directories(estd_test PUBLIC ../include/)
 
-set_property(TARGET estd_test PROPERTY CXX_STANDARD 14)
-set_property(TARGET estd_test PROPERTY CMAKE_CXX_STANDARD_REQUIRED on)
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14")
 
 target_link_libraries(estd_test gmock)
 
