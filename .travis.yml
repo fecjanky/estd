@@ -1,0 +1,12 @@
+language: cpp
+
+before_script:
+  - git submodule init
+  - git submodule update
+
+script:
+  - mkdir build
+  - cd build
+  - cmake ../
+  - make
+  - make test
