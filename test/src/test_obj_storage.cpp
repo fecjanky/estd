@@ -3,8 +3,8 @@
 
 #include "memory.h"
 #include "test_obj_storage.h"
-#include "gtest\gtest.h"
-#include "gmock\gmock.h"
+#include "gtest/gtest.h"
+#include "gmock/gmock.h"
 
 #ifdef _MSC_VER
 __declspec(dllexport)
