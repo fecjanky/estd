@@ -14,7 +14,7 @@ target_include_directories(estd_test PUBLIC ../../include/)
 target_include_directories(estd_test PUBLIC ../include/)
 
 set_property(TARGET estd_test PROPERTY CXX_STANDARD 14)
-set_property(TARGET estd_test PROPERTY CMAKE_CXX_STANDARD_REQUIRED on)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 target_link_libraries(estd_test gmock)
 

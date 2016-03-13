@@ -13,7 +13,7 @@ addons:
 before_install:
   - wget --no-check-certificate https://cmake.org/files/v3.4/cmake-3.4.0-Linux-x86_64.tar.gz 
   - tar -xzf cmake-3.4.0-Linux-x86_64.tar.gz
-  - export PATH="cmake-3.4.0-Linux-x86_64/bin/:$PATH"
+  - export PATH="$(readlink -f cmake-3.4.0-Linux-x86_64/bin/):$PATH"
 
 before_script:
   - git submodule init
@@ -22,4 +22,4 @@ before_script:
 script:
   - mkdir build
   - cd build
-  - ../cmake-3.4.0-Linux-x86_64/bin/cmake ../ && make && make test
+  - cmake ../ && make && CTEST_OUTPUT_ON_FAILURE=TRUE make test
