@@ -24,7 +24,7 @@ template<
     class PropOnCSwap = std::true_type
 >
 using obj_storage_test_t = 
-    estd::obj_storage_t<
+    estd::sso_storage_t<
         storage_size, 
         alignment, 
         Mock::AllocatorMock<uint8_t,PropOnCCopy, PropOnCMove, PropOnCSwap>
@@ -37,7 +37,7 @@ class AllocationTest : public ::testing::TestWithParam<size_t> {
 public:
     AllocationTest() : s(GetParam()) {}
 protected:
-    estd::obj_storage s;
+    estd::sso_storage s;
 };
 
 template<size_t N>
@@ -66,7 +66,7 @@ public:
     static constexpr uintptr_t ptr = 0xc0dedead;
 
     using storage_t = 
-        estd::obj_storage_t<
+        estd::sso_storage_t<
             storage_size, 
             alignment, 
             Allocator
@@ -706,7 +706,7 @@ REGISTER_TYPED_TEST_CASE_P(TestInlineAllocation,
 
 TEST_P(AllocationTest, CopyConstruction) {
 
-    estd::obj_storage s2 = s;
+    estd::sso_storage s2 = s;
     EXPECT_EQ(s2.get_allocator(), s.get_allocator());
     EXPECT_EQ(s2.size(), s.size());
     ASSERT_EQ(s2.max_size(), s.max_size());
@@ -717,7 +717,7 @@ TEST_P(AllocationTest, CopyConstruction) {
 TEST_P(AllocationTest, MoveConstruction) {
 
     auto old_storage = s.get();
-    estd::obj_storage s2 = std::move(s);
+    estd::sso_storage s2 = std::move(s);
     if (s2.size() <= s2.max_size()) {
         EXPECT_EQ(s2.size(), s.size());
         EXPECT_NE(s2.get(), s.get());
@@ -728,7 +728,7 @@ TEST_P(AllocationTest, MoveConstruction) {
 
 TEST_P(AllocationTest, CopyAssigmentInline) {
 
-    estd::obj_storage s2(1);
+    estd::sso_storage s2(1);
     s2 = s;
     EXPECT_EQ(s2.get_allocator(), s.get_allocator());
     EXPECT_EQ(s2.size(), s.size());
@@ -737,7 +737,7 @@ TEST_P(AllocationTest, CopyAssigmentInline) {
 
 TEST_P(AllocationTest, CopyAssigmentAllocated) {
 
-    estd::obj_storage s2(s.max_size()+1);
+    estd::sso_storage s2(s.max_size()+1);
     s2 = s;
     EXPECT_EQ(s2.get_allocator(), s.get_allocator());
     EXPECT_EQ(s2.size(), s.size());
@@ -746,7 +746,7 @@ TEST_P(AllocationTest, CopyAssigmentAllocated) {
 
 TEST_P(AllocationTest, MoveAssignmentInline) {
 
-    estd::obj_storage s_i(1);
+    estd::sso_storage s_i(1);
     auto old_storage = s.get();
     auto size = s.size();
 
@@ -766,7 +766,7 @@ TEST_P(AllocationTest, MoveAssignmentInline) {
 
 TEST_P(AllocationTest, MoveAssignmentAllocated) {
 
-    estd::obj_storage s_a(s.max_size() + 1);
+    estd::sso_storage s_a(s.max_size() + 1);
     auto old_storage = s.get();
     auto size = s.size();
 

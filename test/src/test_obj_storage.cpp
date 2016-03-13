@@ -13,7 +13,7 @@ int PullInTestObjStorageLibrary() { return 0; }
 
 namespace ObjStorageTest {
 
-bool inline_allocation_happened(estd::obj_storage& o) {
+bool inline_allocation_happened(estd::sso_storage& o) {
     o.get_checked();
     auto obj_addr = reinterpret_cast<uintptr_t>(&o);
     auto alloc_addr = reinterpret_cast<uintptr_t>(o.get());
@@ -21,30 +21,30 @@ bool inline_allocation_happened(estd::obj_storage& o) {
 }
 
 TEST(ObjStorageTest, size_is_0_after_default_construction) {
-    estd::obj_storage o{};
+    estd::sso_storage o{};
     EXPECT_EQ(0, o.size());
 }
 
 TEST(ObjStorageTest, pointer_obtained_with_get_is_nullptr_after_default_construction) {
-    estd::obj_storage o{};
+    estd::sso_storage o{};
     EXPECT_EQ(nullptr, o.get());
 }
 
 TEST(ObjStorageTest, get_checked_throws_exception_when_default_constructed) {
-     EXPECT_THROW(estd::obj_storage{}.get_checked(), std::exception);
+     EXPECT_THROW(estd::sso_storage{}.get_checked(), std::exception);
 }
 
 TEST(ObjStorageTest, max_size_is_integral_multiple_of_pointer_size) {
-    EXPECT_EQ(0, estd::obj_storage::max_size() % sizeof(void*));
+    EXPECT_EQ(0, estd::sso_storage::max_size() % sizeof(void*));
 }
 
 TEST(ObjStorageTest, max_size_is_greater_or_equal_than_pointer_size) {
-    EXPECT_GE(estd::obj_storage::max_size(), sizeof(void*));
+    EXPECT_GE(estd::sso_storage::max_size(), sizeof(void*));
 }
 
 
 TEST(ObjStorageTest, size_is_greater_or_equal_to_allocation_size_after_allocation) {
-    estd::obj_storage o1{}, o2{};
+    estd::sso_storage o1{}, o2{};
     o1.allocate(10);
     o2.allocate(100);
     EXPECT_GE(o1.size(), 10);
@@ -52,26 +52,26 @@ TEST(ObjStorageTest, size_is_greater_or_equal_to_allocation_size_after_allocatio
 }
 
 TEST(ObjStorageTest, inline_allocation_happens_when_allocation_size_is_less_than_or_equals_to_max_size) {
-    estd::obj_storage o1{};
-    o1.allocate(estd::obj_storage::max_size());
+    estd::sso_storage o1{};
+    o1.allocate(estd::sso_storage::max_size());
     EXPECT_TRUE(inline_allocation_happened(o1));
 }
 
 TEST(ObjStorageTest, heap_allocation_happens_when_allocation_size_is_greater_than_max_size) {
-    estd::obj_storage o1{};
-    o1.allocate(estd::obj_storage::max_size()+1);
+    estd::sso_storage o1{};
+    o1.allocate(estd::sso_storage::max_size()+1);
     EXPECT_FALSE(inline_allocation_happened(o1));
 }
 
 TEST(ObjStorageTest, zero_size_allocation_results_in_size_1) {
-    estd::obj_storage o1{};
+    estd::sso_storage o1{};
     o1.allocate(0);
     EXPECT_EQ(1,o1.size());
 }
 
 TEST(ObjStorageTest, same_size_storages_compares_equal) {
     using ::testing::Eq;
-    estd::obj_storage obj_0_1{100}, obj_0_2{100};
+    estd::sso_storage obj_0_1{100}, obj_0_2{100};
     ASSERT_TRUE(obj_0_1.get_allocator() == obj_0_2.get_allocator());
     EXPECT_TRUE(obj_0_1 == obj_0_2);
 }
@@ -84,9 +84,9 @@ INSTANTIATE_TEST_CASE_P(
     ::testing::Values(
         0,
         1,
-        estd::obj_storage::max_size(),
-        estd::obj_storage::max_size()+1,
-        estd::obj_storage::max_size()*10)
+        estd::sso_storage::max_size(),
+        estd::sso_storage::max_size()+1,
+        estd::sso_storage::max_size()*10)
     );
 
 

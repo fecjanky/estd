@@ -112,7 +112,7 @@ int func() {
     function_view<func_1>(i)(3, 3.4);
     //function_view<func_3>(i)(v,0);
     //function_view<func_5>(i)(set_name_t{}, std::move(s));
-    obj_storage o;
+    sso_storage o;
     o.allocate(4);
 
     return 0;
