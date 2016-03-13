@@ -10,10 +10,6 @@ addons:
             - g++-5
             - gcc-5
 
-env: 
-  - CC=gcc-5
-  - CXX=g++-5
-
 before_install:
   - wget --no-check-certificate https://cmake.org/files/v3.4/cmake-3.4.0-Linux-x86_64.tar.gz 
   - tar -xzf cmake-3.4.0-Linux-x86_64.tar.gz
@@ -26,4 +22,6 @@ before_script:
 script:
   - mkdir build
   - cd build
+  - export CC=gcc-5
+  - export CXX=g++-5
   - cmake ../ && make && CTEST_OUTPUT_ON_FAILURE=TRUE make test
