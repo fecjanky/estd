@@ -69,13 +69,46 @@ TEST(ObjStorageTest, zero_size_allocation_results_in_size_1) {
     EXPECT_EQ(1,o1.size());
 }
 
-TEST(ObjStorageTest, same_size_storages_compares_equal) {
-    using ::testing::Eq;
+TEST(ObjStorageTest, same_size_storages_compares_equal_when_allocators_compare_equal_also) {
     estd::sso_storage obj_0_1{100}, obj_0_2{100};
     ASSERT_TRUE(obj_0_1.get_allocator() == obj_0_2.get_allocator());
     EXPECT_TRUE(obj_0_1 == obj_0_2);
 }
 
+TEST(ObjStorageTest, storages_are_equal_after_copy_construction) {
+    estd::sso_storage obj_1{100};
+    estd::sso_storage obj_2{obj_1};
+    EXPECT_TRUE(obj_1 == obj_2);
+}
+
+TEST(ObjStorageTest, unequal_storages_are_equal_after_copy_assignment) {
+    estd::sso_storage obj_1{100},obj_2{200};
+    EXPECT_TRUE(obj_1 != obj_2);
+    obj_2 = obj_1;
+    EXPECT_TRUE(obj_1 == obj_2);
+}
+
+
+TEST(ObjStorageTest, move_construction_transfers_ownership_of_heap_allocated_resource) {
+    estd::sso_storage obj_1{100};
+    auto resource = obj_1.get();
+    auto resource_size = obj_1.size();
+
+    estd::sso_storage obj_2{std::move(obj_1)};
+
+    EXPECT_EQ(resource,obj_2.get());
+    EXPECT_EQ(resource_size,obj_2.size());
+}
+
+TEST(ObjStorageTest, move_construction_from_inline_allocated_storage_acts_as_copy_construction) {
+    estd::sso_storage obj_1{estd::sso_storage::max_size()};
+    auto resource = obj_1.get();
+    auto resource_size = obj_1.size();
+    estd::sso_storage obj_2{std::move(obj_1)};
+    EXPECT_EQ(resource,obj_1.get());
+    EXPECT_EQ(resource_size,obj_1.size());
+    EXPECT_TRUE(obj_1 == obj_2);
+}
 
 
 INSTANTIATE_TEST_CASE_P(
