@@ -52,23 +52,82 @@ struct is_power_of<P, 0> {
 };
 
 template<typename... Ts>
-struct AndT;
+struct AndType;
 
 template<typename... Ts>
-struct AndT<::std::true_type, Ts...> {
-    using value = typename AndT<Ts...>::value;
+struct AndType<::std::true_type, Ts...> {
+    static constexpr bool value = AndType<Ts...>::value;
+    using type = typename AndType<Ts...>::type;
 };
 
 template<typename... Ts>
-struct AndT<::std::false_type , Ts...> {
-    using value = ::std::false_type;
+struct AndType<::std::false_type , Ts...> {\
+    static constexpr bool value = false;
+    using type = ::std::false_type;
 };
 
 template<>
-struct AndT<void> {
-    using value = ::std::true_type;
+struct AndType<> {
+    static constexpr bool value = true;
+    using type = ::std::true_type;
 };
 
+template<typename... Ts>
+struct OrType;
+
+template<typename... Ts>
+struct OrType<::std::true_type, Ts...> {
+    static constexpr bool value = true;
+    using type = ::std::true_type;
+};
+
+template<typename... Ts>
+struct OrType<::std::false_type, Ts...> {
+    static constexpr bool value = OrType<Ts...>::value;
+    using type = typename OrType<Ts...>::type;
+};
+
+template<>
+struct OrType<> {
+    static constexpr bool value = false;
+    using type = ::std::false_type;
+};
+
+template<typename T>
+struct NotType;
+
+template<>
+struct NotType<std::true_type> {
+    static constexpr bool value = false;
+    using type = std::false_type;
+};
+
+template<>
+struct NotType<std::false_type> {
+    static constexpr bool value = true;
+    using type = std::true_type;
+};
+
+
+template<typename... T>
+using AndType_t = typename AndType<T...>::type;
+
+template<typename... T>
+using OrType_t = typename OrType<T...>::type;
+
+template<typename T>
+using NotType_t = typename NotType<T>::type;
+
+// until c++17...
+template<typename A>
+struct allocator_is_always_equal{
+    static constexpr bool value = std::is_empty<A>::value;
+    using type = typename std::is_empty<A>::type;
+};
+
+template<typename A>
+using allocator_is_always_equal_t =
+        typename allocator_is_always_equal<A>::type;
 
 struct DefaultCloningPolicy {
     template<typename T>
@@ -81,7 +140,8 @@ struct DefaultCloningPolicy {
             !::std::is_lvalue_reference<T>::value>>
     static T* Move(T&& from, void* to) noexcept
     {
-        static_assert(noexcept(std::declval<T>().move(to)), "T is not noexcept moveable");
+        static_assert(noexcept(std::declval<T>().move(to)),
+                "T is not noexcept moveable");
         return from.move(to);
     }
 };
@@ -140,6 +200,10 @@ public:
     using pocca = propagate_on_container_copy_assignment;
     using pocs = propagate_on_container_swap;
     using pointer = typename allocator_traits::pointer;
+    static constexpr bool move_assign_noexcept =
+            impl::OrType_t<pocma,impl::allocator_is_always_equal_t<allocator_type>>::value;
+    static constexpr bool swap_noexcept =
+            impl::OrType_t<pocs,impl::allocator_is_always_equal_t<allocator_type>>::value;
 
     sso_storage_t() :
             storage { }, heap_storage{}, size_ { }
@@ -183,12 +247,12 @@ public:
         return copy_assign_impl(rhs, pocca{});
     }
 
-    sso_storage_t& operator= (sso_storage_t&& rhs) noexcept(pocma::value)
+    sso_storage_t& operator= (sso_storage_t&& rhs) noexcept(move_assign_noexcept)
     {
         return move_assign_impl(::std::move(rhs), pocma{});
     }
 
-    void swap_object(sso_storage_t& rhs) noexcept(pocs::value)
+    void swap_object(sso_storage_t& rhs) noexcept(swap_noexcept)
     {
         swap_impl(rhs,pocs{});
     }
@@ -298,7 +362,7 @@ private:
         return *this;
     }
 
-
+    // move assign if propagate_on_container_move_assignment is true
     sso_storage_t& move_assign_impl(sso_storage_t&& rhs, ::std::true_type) noexcept
     {
         static_assert(::std::is_nothrow_move_assignable<allocator_type>::value,
@@ -313,6 +377,28 @@ private:
     }
 
     sso_storage_t& move_assign_impl(sso_storage_t&& rhs, ::std::false_type)
+        noexcept(impl::allocator_is_always_equal_t<allocator_type>::value)
+    {
+        return move_assign_impl(::std::move(rhs),::std::false_type{},
+                impl::allocator_is_always_equal_t<allocator_type>{});
+    }
+
+    // move assign if propagate_on_container_move_assignment is false but
+    // allocator is always equal
+    sso_storage_t& move_assign_impl(
+            sso_storage_t&& rhs, ::std::false_type, ::std::true_type) noexcept
+    {
+        if (this != &rhs) {
+            deallocate();
+            obtain_rvalue(::std::move(rhs));
+        }
+        return *this;
+    }
+
+    // move assign if propagate_on_container_move_assignment is false but
+    // allocator is not always equal
+    sso_storage_t& move_assign_impl(
+            sso_storage_t&& rhs,  ::std::false_type,::std::false_type)
     {
         if (this != &rhs) {
             // can obtain storage only if allocators compare to equal
@@ -327,6 +413,7 @@ private:
         }
         return *this;
     }
+
 
     void strong_copy_allocation(const sso_storage_t& rhs)
     {
@@ -348,11 +435,24 @@ private:
     }
 
     void swap_impl(sso_storage_t& rhs, ::std::false_type)
+        noexcept(impl::allocator_is_always_equal_t<allocator_type>::value)
+    {
+        // dispatch further based on allocator
+        swap_impl(rhs,std::false_type{},
+               impl::allocator_is_always_equal_t<allocator_type>{});
+    }
+
+    void swap_impl(sso_storage_t& rhs, ::std::false_type, ::std::false_type)
     {
         if(!(get_allocator() == rhs.get_allocator())) {
             throw ::std::runtime_error(
                     "obj_storage_t: swap attempt with unequal allocators ");
         }
+        swap_guts(rhs);
+    }
+
+    void swap_impl(sso_storage_t& rhs, ::std::false_type,std::true_type) noexcept
+    {
         swap_guts(rhs);
     }
 
