@@ -58,7 +58,8 @@ namespace Mock {
         typename T,
         class PropOnCCopy = std::true_type,
         class PropOnCMove = std::true_type,
-        class PropOnCSwap = std::true_type
+        class PropOnCSwap = std::true_type,
+        class IsAlwaysEq = std::false_type
     > class AllocatorMock : public AllocatorBase<T> {
     public:
         using value_type = T;
@@ -71,6 +72,7 @@ namespace Mock {
         using propagate_on_container_copy_assignment = PropOnCCopy;
         using propagate_on_container_move_assignment = PropOnCMove;
         using propagate_on_container_swap = PropOnCSwap;
+        using is_always_equal = IsAlwaysEq;
 
         AllocatorMock() {}
         
