@@ -110,6 +110,45 @@ TEST(ObjStorageTest, move_construction_from_inline_allocated_storage_acts_as_cop
     EXPECT_TRUE(obj_1 == obj_2);
 }
 
+TEST(ObjStorageTest, move_assignment_transfers_ownership_of_heap_allocated_resource) {
+    estd::sso_storage obj_2{ 200 };
+    estd::sso_storage obj_1{ 100 };
+    auto resource = obj_1.get();
+    auto resource_size = obj_1.size();
+
+    obj_2 = std::move(obj_1);
+
+    EXPECT_EQ(resource, obj_2.get());
+    EXPECT_EQ(resource_size, obj_2.size());
+}
+
+TEST(ObjStorageTest, move_assignment_from_inline_allocated_storage_acts_as_copy_assignment) {
+    estd::sso_storage obj_1{ estd::sso_storage::max_size() };
+    estd::sso_storage obj_2{ 200 };
+    auto resource = obj_1.get();
+    auto resource_size = obj_1.size();
+    obj_2 = std::move(obj_1);
+    EXPECT_EQ(resource, obj_1.get());
+    EXPECT_EQ(resource_size, obj_1.size());
+    EXPECT_TRUE(obj_1 == obj_2);
+}
+
+TEST(ObjStorageTest, swap_two_storages_swaps_the_allocated_resources) {
+    estd::sso_storage obj_1{ 100 };
+    estd::sso_storage obj_2{ 200 };
+    auto resource_1 = obj_1.get();
+    auto resource_size_1 = obj_1.size();
+    auto resource_2 = obj_2.get();
+    auto resource_size_2 = obj_2.size();
+
+    swap(obj_1,obj_2);
+
+    EXPECT_EQ(resource_1, obj_2.get());
+    EXPECT_EQ(resource_size_1, obj_2.size());
+    EXPECT_EQ(resource_2, obj_1.get());
+    EXPECT_EQ(resource_size_2, obj_1.size());
+
+}
 
 INSTANTIATE_TEST_CASE_P(
     ObjStorage,

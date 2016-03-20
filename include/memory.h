@@ -349,7 +349,7 @@ private:
             }
             deallocate();
             get_allocator() = ::std::move(temp_alloc);
-            assign_storage(p, rhs);
+            assign_storage(p, rhs.size());
         }
         return *this;
     }
@@ -357,7 +357,7 @@ private:
     sso_storage_t& copy_assign_impl(const sso_storage_t& rhs, ::std::false_type)
     {
         if (this != &rhs) {
-            strong_copy_allocation(std::move(rhs));
+            strong_copy_allocation(rhs);
         }
         return *this;
     }
@@ -369,8 +369,7 @@ private:
             "allocator_type is not nothrow_move_assignable");
 
         if (this != &rhs) {
-            deallocate();
-            obtain_rvalue(::std::move(rhs));
+            deallocate_and_obtain_rvalue(::std::move(rhs));
             get_allocator() = ::std::move(rhs.get_allocator());
         }
         return *this;
@@ -389,8 +388,7 @@ private:
             sso_storage_t&& rhs, ::std::false_type, ::std::true_type) noexcept
     {
         if (this != &rhs) {
-            deallocate();
-            obtain_rvalue(::std::move(rhs));
+            deallocate_and_obtain_rvalue(::std::move(rhs));
         }
         return *this;
     }
@@ -403,8 +401,7 @@ private:
         if (this != &rhs) {
             // can obtain storage only if allocators compare to equal
             if (get_allocator() == rhs.get_allocator()) {
-                deallocate();
-                obtain_rvalue(::std::move(rhs));
+                deallocate_and_obtain_rvalue(::std::move(rhs));
             }
             // need to reallocate with this allocator if not equal
             else {
@@ -424,7 +421,7 @@ private:
             p = get_allocator().allocate(rhs.size());
         }
         deallocate();
-        assign_storage(p, rhs);
+        assign_storage(p, rhs.size());
     }
 
     void swap_impl(sso_storage_t& rhs, ::std::true_type) noexcept
@@ -507,17 +504,23 @@ private:
         }
     }
 
+    void deallocate_and_obtain_rvalue(sso_storage_t&& rhs) noexcept
+    {
+        deallocate();
+        obtain_rvalue(std::move(rhs));
+    }
+
     // precondition: this storage is in deallocated state
-    void assign_storage(pointer p,const sso_storage_t& rhs) noexcept 
+    void assign_storage(pointer p,const size_t size) noexcept 
     {
         // use preallocated storage 
-        if (rhs.size() > 0 && rhs.size() <= max_size_) {
-            allocate_inline(rhs.size());
+        if (size > 0 && size <= max_size()) {
+            allocate_inline(size);
         }
         // use allocated storage else
-        else if (rhs.size() > 0) {
+        else if (size > 0) {
             heap_storage = p;
-            size_ = rhs.size();
+            size_ = size;
         }
     }
 
