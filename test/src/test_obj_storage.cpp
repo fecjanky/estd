@@ -83,6 +83,13 @@ TEST(ObjStorageTest, heap_allocation_happens_when_allocation_size_is_greater_tha
     EXPECT_FALSE(inline_allocation_happened(o1));
 }
 
+TEST(ObjStorageTest, when_heap_allocation_happens_pointer_address_is_aligned) {
+    constexpr size_t alignment = 64;
+    estd::sso_storage_t<4, alignment> o1{};
+    o1.allocate(estd::sso_storage::max_size() + 1);
+    EXPECT_EQ(0,reinterpret_cast<std::uintptr_t>(o1.get()) % alignment);
+}
+
 TEST(ObjStorageTest, zero_size_allocation_results_in_size_1) {
     estd::sso_storage o1{};
     o1.allocate(0);
@@ -195,6 +202,8 @@ TEST(ObjStorageTest, swapping_of_two_inline_allocated_storages_keeps_the_storage
     EXPECT_TRUE(validate_storage(obj_2.get(),resource_size_2, max_size));
 
 }
+
+// TODO: add simple test cases using mocked allocator
 
 INSTANTIATE_TEST_CASE_P(
     ObjStorage,
