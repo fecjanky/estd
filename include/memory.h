@@ -118,6 +118,16 @@ using OrType_t = typename OrType<T...>::type;
 template<typename T>
 using NotType_t = typename NotType<T>::type;
 
+template<typename A, bool b>
+struct select_always_eq_trait {
+    using type = typename A::is_always_equal;
+};
+
+template<typename A>
+struct select_always_eq_trait<A,false> {
+    using type = typename std::is_empty<A>::type;
+};
+
 // until c++17...
 template<typename A>
 struct allocator_is_always_equal {
@@ -130,18 +140,8 @@ private:
             std::true_type, 
             decltype(has_always_equal_test(std::declval<A>(),nullptr))
         >::value;
-    
-    template<bool b>
-    struct select {
-        using type = typename A::is_always_equal;
-    };
-
-    template<>
-    struct select<false> {
-        using type = typename std::is_empty<A>::type;
-    };
 public:
-    using type = typename select<has_always_equal>::type;
+    using type = typename select_always_eq_trait<A, has_always_equal>::type;
     static constexpr bool value = type::value;
 };
 
