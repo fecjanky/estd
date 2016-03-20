@@ -47,8 +47,8 @@ TEST(ObjStorageTest, size_is_greater_or_equal_to_allocation_size_after_allocatio
     estd::sso_storage o1{}, o2{};
     o1.allocate(10);
     o2.allocate(100);
-    EXPECT_GE(o1.size(), 10);
-    EXPECT_GE(o2.size(), 100);
+    EXPECT_GE(o1.size(), 10U);
+    EXPECT_GE(o2.size(), 100U);
 }
 
 TEST(ObjStorageTest, inline_allocation_happens_when_allocation_size_is_less_than_or_equals_to_max_size) {
