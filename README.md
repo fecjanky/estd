@@ -8,9 +8,9 @@ Currently it has 2 headers:
 
 ## functional.h
 
-* the *interface* class is a generalization for std::function. *interface* class can be used for type-erasure classes that provide some well defined usage interface
+* the *interface* class is a generalization of std::function. *interface* class can be used for type-erasure of classes that provide some well defined usage interface
 
 ## memory.h
 
 * *sso\_storage\_t* implements the small size optimization allocation strategy, it accepts the size threshold and Allocator policy as a template parameter
-*  *polymorphic\_obj\_storage\_t* can be used for storing polymorphic objects applying small size optimization
+*  *polymorphic\_obj\_storage\_t* can be used for storing polymorphic objects applying small size optimization and is implemented through *sso\_storage\_t*
