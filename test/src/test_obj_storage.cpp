@@ -13,11 +13,31 @@ int PullInTestObjStorageLibrary() { return 0; }
 
 namespace ObjStorageTest {
 
-bool inline_allocation_happened(estd::sso_storage& o) {
+bool inline_allocation_happened(estd::sso_storage& o) 
+{
     o.get_checked();
     auto obj_addr = reinterpret_cast<uintptr_t>(&o);
     auto alloc_addr = reinterpret_cast<uintptr_t>(o.get());
     return o.get() && (alloc_addr - obj_addr) < sizeof(o);
+}
+
+void fill_storage(estd::sso_storage& o, uint8_t start) 
+{
+    auto begin = reinterpret_cast<uint8_t*>(o.get());
+    auto end = begin + o.size();
+    for (auto i = begin; i != end; ++i) {
+        *i = start++;
+    }
+}
+
+bool validate_storage(const void* ptr,size_t size, uint8_t start)
+{
+    auto begin = reinterpret_cast<const uint8_t*>(ptr);
+    auto end = begin + size;
+    for (auto i = begin; i != end; ++i) {
+        if (*i != start++) return false;
+    }
+    return true;
 }
 
 TEST(ObjStorageTest, size_is_0_after_default_construction) {
@@ -133,7 +153,7 @@ TEST(ObjStorageTest, move_assignment_from_inline_allocated_storage_acts_as_copy_
     EXPECT_TRUE(obj_1 == obj_2);
 }
 
-TEST(ObjStorageTest, swap_two_storages_swaps_the_allocated_resources) {
+TEST(ObjStorageTest, swapping_of_two_storages_swaps_the_allocated_resources) {
     estd::sso_storage obj_1{ 100 };
     estd::sso_storage obj_2{ 200 };
     auto resource_1 = obj_1.get();
@@ -147,6 +167,32 @@ TEST(ObjStorageTest, swap_two_storages_swaps_the_allocated_resources) {
     EXPECT_EQ(resource_size_1, obj_2.size());
     EXPECT_EQ(resource_2, obj_1.get());
     EXPECT_EQ(resource_size_2, obj_1.size());
+
+}
+
+TEST(ObjStorageTest, swapping_of_two_inline_allocated_storages_keeps_the_storage_intact) {
+    constexpr auto max_size = static_cast<uint8_t>(estd::sso_storage::max_size());
+    estd::sso_storage obj_1{ estd::sso_storage::max_size()/2 };
+    estd::sso_storage obj_2{ estd::sso_storage::max_size() };
+
+    fill_storage(obj_1, 0);
+    fill_storage(obj_2, max_size);
+
+    auto resource_1 = obj_1.get();
+    auto resource_size_1 = obj_1.size();
+    auto resource_2 = obj_2.get();
+    auto resource_size_2 = obj_2.size();
+
+    swap(obj_1, obj_2);
+
+    EXPECT_EQ(resource_1, obj_1.get());
+    EXPECT_EQ(resource_size_1, obj_2.size());
+
+    EXPECT_EQ(resource_2, obj_2.get());
+    EXPECT_EQ(resource_size_2, obj_1.size());
+
+    EXPECT_TRUE(validate_storage(obj_1.get(),resource_size_1, 0));
+    EXPECT_TRUE(validate_storage(obj_2.get(),resource_size_2, max_size));
 
 }
 
