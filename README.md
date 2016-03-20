@@ -1,4 +1,4 @@
-# estd  ![Build Status](https://travis-ci.org/fecjanky/estd.svg?branch=master)](https://travis-ci.org/fecjanky/estd)
+# estd  [![Build Status](https://travis-ci.org/fecjanky/estd.svg?branch=master)](https://travis-ci.org/fecjanky/estd)
 
 This header-only "library" contains some useful code which can be used as it was an STL extension. The name 'estd' is inspired by Bjarne Stroustrup - The C++ Programming Language book.
 Currently it has 2 headers:
