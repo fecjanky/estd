@@ -120,10 +120,31 @@ using NotType_t = typename NotType<T>::type;
 
 // until c++17...
 template<typename A>
-struct allocator_is_always_equal{
-    static constexpr bool value = std::is_empty<A>::value;
-    using type = typename std::is_empty<A>::type;
+struct allocator_is_always_equal {
+private:
+    template<typename AA>
+    static std::true_type has_always_equal_test(const AA&,typename AA::is_always_equal*);
+    static std::false_type has_always_equal_test(...);
+    static constexpr bool has_always_equal = 
+        std::is_same<
+            std::true_type, 
+            decltype(has_always_equal_test(std::declval<A>(),nullptr))
+        >::value;
+    
+    template<bool b>
+    struct select {
+        using type = typename A::is_always_equal;
+    };
+
+    template<>
+    struct select<false> {
+        using type = typename std::is_empty<A>::type;
+    };
+public:
+    using type = typename select<has_always_equal>::type;
+    static constexpr bool value = type::value;
 };
+
 
 template<typename A>
 using allocator_is_always_equal_t =
