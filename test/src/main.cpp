@@ -34,9 +34,11 @@
 
 int PullInTestObjStorageLibrary();
 int PullInTestPolyObjStorageLibrary();
+int PullInTestMemResourceLibrary();
 
 static int dummyObjStorage = PullInTestObjStorageLibrary();
 static int dummyPolyObjStorage = PullInTestPolyObjStorageLibrary();
+static int dummyMemResource = PullInTestMemResourceLibrary();
 
 extern int func();
 

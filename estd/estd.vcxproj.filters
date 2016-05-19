@@ -46,5 +46,8 @@
     <ClCompile Include="..\test\src\test_poly_obj_storage.cpp">
       <Filter>UTest\Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="..\test\src\test_memory_resource.cpp">
+      <Filter>UTest\Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>

@@ -27,6 +27,7 @@
 #include <cstddef>
 #include <stdexcept>
 #include <algorithm>
+#include <utility>
 
 namespace estd {
 
@@ -588,8 +589,8 @@ public:
     using type = IF;
     static_assert(::std::is_polymorphic<type>::value, "IF class is not polymorphic");
     static_assert(::std::is_same<type, ::std::decay_t<type>>::value, "IF class must be cv unqualifed and non-reference type");
-    static_assert(noexcept(CloningPolicy::Move(::std::move(::std::declval<type>()), ::std::declval<void*>())),
-        "IF type is not noexcept moveable");
+    //static_assert(noexcept(CloningPolicy::Move(::std::move(::std::declval<type>()), ::std::declval<void*>())),
+    //    "IF type is not noexcept moveable");
 
     template<
         typename T,
@@ -833,6 +834,37 @@ noexcept(noexcept(std::declval<::estd::polymorphic_obj_storage_t<I, C, s, a, A>&
 {
     lhs.swap_object(rhs);
 }
+
+
+class memory_resource_t {
+public:
+    memory_resource_t() noexcept : memory{} {}
+    memory_resource_t(void* p,size_t n) : memory{p,n} {
+        if (!p || !n)throw std::logic_error("invalid memory resource");
+    }
+    memory_resource_t(const memory_resource_t&) noexcept = default;
+    memory_resource_t(memory_resource_t&&) noexcept = default;
+    memory_resource_t& operator=(const memory_resource_t& rhs) noexcept {
+        memory = rhs.memory;
+        return *this;
+    }
+    memory_resource_t& operator=(memory_resource_t&&) noexcept = default;
+
+    operator void*() const noexcept {
+        return memory.first;
+    }
+    operator bool()const noexcept {
+        return memory.first;
+    }
+    void* ptr()const noexcept {
+        return memory.first;
+    }
+    size_t size() const noexcept {
+        return memory.second;
+    }
+private:
+    std::pair<void*, size_t> memory;
+};
 
 }  //namespace estd
 
