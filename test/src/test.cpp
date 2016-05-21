@@ -116,8 +116,9 @@ int func() {
     o.allocate(4);
     poly_alloc_impl<std::allocator<uint8_t>> a;
     std::vector<int, poly_alloc_wrapper<int>> pv(a);
-    auto pv2 = pv;
     pv.push_back(1);
+    auto pv2 = pv;
+    pv2[0] = 5;
     auto pa = a.clone(a);
     return 0;
 }

@@ -871,6 +871,10 @@ struct poly_alloc_t {
     virtual void deallocate(void* p, size_t n) noexcept = 0;
     virtual size_t max_size() const noexcept = 0;
     virtual poly_alloc_t* clone(poly_alloc_t& a) const = 0;
+    virtual bool operator==(const poly_alloc_t&) const noexcept = 0;
+    bool operator!=(const poly_alloc_t& rhs) const noexcept {
+        return !(*this == rhs);
+    }
     virtual ~poly_alloc_t() = default;
 };
 
@@ -903,6 +907,20 @@ public:
         return this->allocator_type::max_size();
     }
     
+    bool operator==(const poly_alloc_t& rhs) const noexcept override {
+        auto other = dynamic_cast<const poly_alloc_impl*>(&rhs);
+        return  other != nullptr && *this == *other;
+    }
+
+    allocator_type& allocator() noexcept {
+        return static_cast<allocator_type&>(*this);
+    }
+
+    const allocator_type& allocator() const noexcept {
+        return static_cast<const allocator_type&>(*this);
+    }
+
+
     poly_alloc_t* clone(poly_alloc_t& a) const override 
     {
         poly_alloc_wrapper<poly_alloc_impl> allocator(a);
@@ -921,16 +939,24 @@ public:
     using pointer = T*;
     using const_pointer = const T*;
     using value_type = T;
+    using propagate_on_container_copy_assignment = std::true_type;
+    using propagate_on_container_move_assignment = std::true_type;
+    using propagate_on_container_swap = std::true_type;
+    using is_always_equal = std::false_type;
 
     template<typename TT>
-    poly_alloc_wrapper(poly_alloc_wrapper<TT>& p) : _a{ p.allocator() } {}
+    poly_alloc_wrapper(poly_alloc_wrapper<TT>& p) noexcept : _a{ p.allocator() } {}
 
-    poly_alloc_wrapper(poly_alloc_t& p) : _a{ p } {}
+    poly_alloc_wrapper(poly_alloc_t& p) noexcept : _a{ p } {}
 
     template<typename TT>
-    poly_alloc_wrapper& operator=(poly_alloc_wrapper<TT>& p)
+    poly_alloc_wrapper& operator=(poly_alloc_wrapper<TT>& p) noexcept
     {
         _a = p.allocator();
+        return *this;
+    }
+
+    poly_alloc_wrapper select_on_container_copy_construction() noexcept {
         return *this;
     }
 
@@ -938,16 +964,32 @@ public:
         return static_cast<pointer>(_a.get().allocate(n * sizeof(T)));
     }
     
-    void deallocate(pointer p, size_t n) {
+    void deallocate(pointer p, size_t n) noexcept {
         _a.get().deallocate(p, n * sizeof(T));
     }
 
-    poly_alloc_t& allocator()noexcept {
+    poly_alloc_t& allocator() noexcept {
         return _a;
     }
     const poly_alloc_t& allocator() const noexcept {
         return _a;
     }
+
+    template<typename TT>
+    bool operator==(const poly_alloc_wrapper<TT>& rhs)const noexcept {
+        return allocator() == rhs.allocator();
+    }
+
+    template<typename TT>
+    bool operator!=(const poly_alloc_wrapper<TT>& rhs)const noexcept {
+        return !(*this == rhs);
+    }
+
+    size_t max_size() const noexcept
+    {
+        return allocator().max_size();
+    }
+
 private:
     std::reference_wrapper<poly_alloc_t> _a;
 };
