@@ -1003,7 +1003,7 @@ public:
 };
 
 template<typename T>
-poly_alloc_wrapper<T>::poly_alloc_wrapper() noexcept : _a{ &default_poly_allocator::instance() }
+inline poly_alloc_wrapper<T>::poly_alloc_wrapper() noexcept : _a{ &default_poly_allocator::instance() }
 {
 }
 
