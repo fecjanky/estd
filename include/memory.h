@@ -854,7 +854,7 @@ public:
         return memory.first;
     }
     operator bool()const noexcept {
-        return memory.first;
+        return memory.first != nullptr;
     }
     void* ptr()const noexcept {
         return memory.first;
@@ -865,6 +865,93 @@ public:
 private:
     std::pair<void*, size_t> memory;
 };
+
+struct poly_alloc_t {
+    virtual void* allocate(size_t n, const void* hint = nullptr) = 0;
+    virtual void deallocate(void* p, size_t n) noexcept = 0;
+    virtual size_t max_size() const noexcept = 0;
+    virtual poly_alloc_t* clone(poly_alloc_t& a) const = 0;
+    virtual ~poly_alloc_t() = default;
+};
+
+
+template<typename T>
+class poly_alloc_wrapper;
+
+template<class Alloc>
+class poly_alloc_impl : public poly_alloc_t, private Alloc {
+public:
+    using allocator_traits = std::allocator_traits<Alloc>;
+    using allocator_type = typename allocator_traits::allocator_type;
+    using value_type = typename allocator_traits::value_type;
+    using pointer = typename allocator_traits::pointer;
+    using const_pointer = typename allocator_traits::const_pointer;
+
+    static_assert(std::is_same<uint8_t, value_type>::value, "Alloc has to be a byte allocator");
+
+    void* allocate(size_t n, const void* hint = nullptr) override {
+        return this->allocator_type::allocate(n,static_cast<const_pointer>(hint));
+    }
+
+    void deallocate(void* p, size_t n) noexcept override
+    {
+        this->allocator_type::deallocate(static_cast<pointer>(p), n);
+    }
+    
+    size_t max_size() const noexcept override 
+    {
+        return this->allocator_type::max_size();
+    }
+    
+    poly_alloc_t* clone(poly_alloc_t& a) const override 
+    {
+        poly_alloc_wrapper<poly_alloc_impl> allocator(a);
+        auto deleter = [&](poly_alloc_impl* p) { allocator.deallocate(p, 1); };
+        std::unique_ptr<poly_alloc_impl, std::function<void(poly_alloc_impl*)>> 
+            p{ allocator.allocate(1),std::move(deleter)};
+        new(p.get()) poly_alloc_impl(*this);
+        return p.release();
+    }
+
+};
+
+template<typename T>
+class poly_alloc_wrapper {
+public:
+    using pointer = T*;
+    using const_pointer = const T*;
+    using value_type = T;
+
+    template<typename TT>
+    poly_alloc_wrapper(poly_alloc_wrapper<TT>& p) : _a{ p.allocator() } {}
+
+    poly_alloc_wrapper(poly_alloc_t& p) : _a{ p } {}
+
+    template<typename TT>
+    poly_alloc_wrapper& operator=(poly_alloc_wrapper<TT>& p)
+    {
+        _a = p.allocator();
+        return *this;
+    }
+
+    pointer allocate(size_t n) {
+        return static_cast<pointer>(_a.get().allocate(n * sizeof(T)));
+    }
+    
+    void deallocate(pointer p, size_t n) {
+        _a.get().deallocate(p, n * sizeof(T));
+    }
+
+    poly_alloc_t& allocator()noexcept {
+        return _a;
+    }
+    const poly_alloc_t& allocator() const noexcept {
+        return _a;
+    }
+private:
+    std::reference_wrapper<poly_alloc_t> _a;
+};
+
 
 }  //namespace estd
 

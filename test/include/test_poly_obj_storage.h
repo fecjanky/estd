@@ -19,7 +19,7 @@ namespace PolyStorageTest {
         virtual IF* clone(void*)const = 0;
         virtual IF* move(void*)noexcept = 0;
         virtual ~IF() = default;
-        IF() : my_index{ index++ } {}
+        IF() : my_index{ ++index - 1 } {}
         
         int get_index() const noexcept {
             return my_index;
