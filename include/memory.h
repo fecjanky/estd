@@ -945,14 +945,14 @@ public:
     using is_always_equal = std::false_type;
 
     template<typename TT>
-    poly_alloc_wrapper(poly_alloc_wrapper<TT>& p) noexcept : _a{ p.allocator() } {}
+    poly_alloc_wrapper(const poly_alloc_wrapper<TT>& p) noexcept : _a{ &p.allocator() } {}
 
-    poly_alloc_wrapper(poly_alloc_t& p) noexcept : _a{ p } {}
+    poly_alloc_wrapper(poly_alloc_t& p) noexcept : _a{ &p } {}
 
     template<typename TT>
-    poly_alloc_wrapper& operator=(poly_alloc_wrapper<TT>& p) noexcept
+    poly_alloc_wrapper& operator=(const poly_alloc_wrapper<TT>& p) noexcept
     {
-        _a = p.allocator();
+        _a = &p.allocator();
         return *this;
     }
 
@@ -961,18 +961,15 @@ public:
     }
 
     pointer allocate(size_t n) {
-        return static_cast<pointer>(_a.get().allocate(n * sizeof(T)));
+        return static_cast<pointer>(_a->allocate(n * sizeof(T)));
     }
     
     void deallocate(pointer p, size_t n) noexcept {
-        _a.get().deallocate(p, n * sizeof(T));
+        _a->deallocate(p, n * sizeof(T));
     }
 
-    poly_alloc_t& allocator() noexcept {
-        return _a;
-    }
-    const poly_alloc_t& allocator() const noexcept {
-        return _a;
+    poly_alloc_t& allocator() const noexcept {
+        return *_a;
     }
 
     template<typename TT>
@@ -991,7 +988,7 @@ public:
     }
 
 private:
-    std::reference_wrapper<poly_alloc_t> _a;
+    poly_alloc_t* _a;
 };
 
 
