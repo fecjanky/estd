@@ -28,6 +28,7 @@
 #include <stdexcept>
 #include <algorithm>
 #include <utility>
+#include <functional>
 
 namespace estd {
 
@@ -949,6 +950,8 @@ public:
 
     poly_alloc_wrapper(poly_alloc_t& p) noexcept : _a{ &p } {}
 
+    poly_alloc_wrapper() noexcept;
+
     template<typename TT>
     poly_alloc_wrapper& operator=(const poly_alloc_wrapper<TT>& p) noexcept
     {
@@ -990,7 +993,19 @@ public:
 private:
     poly_alloc_t* _a;
 };
+    
+class default_poly_allocator {
+public:
+    static poly_alloc_t& instance() {
+        static poly_alloc_impl<std::allocator<uint8_t>> a;
+        return a;
+    }
+};
 
+template<typename T>
+poly_alloc_wrapper<T>::poly_alloc_wrapper() noexcept : _a{ &default_poly_allocator::instance() }
+{
+}
 
 }  //namespace estd
 
