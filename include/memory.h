@@ -894,6 +894,10 @@ public:
 
     static_assert(std::is_same<uint8_t, value_type>::value, "Alloc has to be a byte allocator");
 
+    poly_alloc_impl() {}
+    poly_alloc_impl(const Alloc& a) : Alloc(a) {}
+    poly_alloc_impl(Alloc&& a) : Alloc(std::move(a)) {}
+
     void* allocate(size_t n, const void* hint = nullptr) override {
         return this->allocator_type::allocate(n,static_cast<const_pointer>(hint));
     }
@@ -1005,6 +1009,11 @@ public:
 template<typename T>
 inline poly_alloc_wrapper<T>::poly_alloc_wrapper() noexcept : _a{ &default_poly_allocator::instance() }
 {
+}
+
+template<typename Alloc>
+inline poly_alloc_impl<Alloc> to_poly_allocator(Alloc&& a) {
+    return poly_alloc_impl<Alloc>(std::move(a));
 }
 
 }  //namespace estd
