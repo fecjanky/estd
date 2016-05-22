@@ -914,7 +914,8 @@ public:
     
     bool operator==(const poly_alloc_t& rhs) const noexcept override {
         auto other = dynamic_cast<const poly_alloc_impl*>(&rhs);
-        return  other != nullptr && *this == *other;
+        return  other != nullptr && this->allocator() == other->allocator();
+        //return false;
     }
 
     allocator_type& allocator() noexcept {
