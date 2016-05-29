@@ -880,6 +880,16 @@ struct poly_alloc_t {
 };
 
 
+//template<typename T>
+//class poly_deleter_t {
+//public:
+//    void operator(T*p) noexcept{
+//        a->deallocate(p);
+//    }
+//private:
+//    poly_alloc_t* a;
+//};
+
 template<typename T>
 class poly_alloc_wrapper;
 
@@ -1016,6 +1026,43 @@ template<typename Alloc>
 inline poly_alloc_impl<Alloc> to_poly_allocator(Alloc&& a) {
     return poly_alloc_impl<Alloc>(std::move(a));
 }
+
+class poly_deleter {
+public:
+
+    template<typename T>
+    static poly_deleter from(poly_alloc_wrapper<T> pa) {
+        return poly_deleter(&poly_deleter::delete_func<T>, pa.allocator());
+    }
+
+    void operator()(void* p) noexcept {
+        deleter(*this, p);
+    }
+
+    poly_deleter() :deleter{}, a{} {};
+    poly_deleter(const poly_deleter&) = default;
+    poly_deleter(poly_deleter&&) = default;
+    poly_deleter& operator=(const poly_deleter&) = default;
+    poly_deleter& operator=(poly_deleter&&) = default;
+    
+
+private:
+    using deleter_t = void(poly_deleter&,void*);
+
+    poly_deleter(deleter_t* d, poly_alloc_t& _a) : deleter(d), a(&_a) {}
+
+    template<typename T>
+    static void delete_func(poly_deleter& o,void* p) noexcept {
+        auto pt = static_cast<T*>(p);
+        poly_alloc_wrapper<T> pa(*o.a);
+        using traits = std::allocator_traits<poly_alloc_wrapper<T>>;
+        traits::destroy(pa, pt);
+        traits::deallocate(pa, pt,1);
+    }
+
+    deleter_t* deleter;
+    poly_alloc_t* a;
+};
 
 }  //namespace estd
 
