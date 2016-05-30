@@ -923,8 +923,10 @@ public:
     }
     
     bool operator==(const poly_alloc_t& rhs) const noexcept override {
-        auto other = dynamic_cast<const poly_alloc_impl*>(&rhs);
-        return  other != nullptr && this->allocator() == other->allocator();
+        // TODO(fecjanky) : this is slow, need to come up with something better
+        //auto other = dynamic_cast<const poly_alloc_impl*>(&rhs);
+        //return  other != nullptr && this->allocator() == other->allocator();
+        return true;
         //return false;
     }
 
@@ -1031,7 +1033,7 @@ class poly_deleter {
 public:
 
     template<typename T>
-    static poly_deleter from(poly_alloc_wrapper<T> pa) {
+    static poly_deleter from(poly_alloc_wrapper<T> pa) noexcept {
         return poly_deleter(&poly_deleter::delete_func<T>, pa.allocator());
     }
 
@@ -1049,7 +1051,7 @@ public:
 private:
     using deleter_t = void(poly_deleter&,void*);
 
-    poly_deleter(deleter_t* d, poly_alloc_t& _a) : deleter(d), a(&_a) {}
+    poly_deleter(deleter_t* d, poly_alloc_t& _a) noexcept : deleter(d), a(&_a) {}
 
     template<typename T>
     static void delete_func(poly_deleter& o,void* p) noexcept {
