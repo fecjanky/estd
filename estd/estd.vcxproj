@@ -132,6 +132,7 @@
   <ItemGroup>
     <ClInclude Include="..\include\functional.h" />
     <ClInclude Include="..\include\memory.h" />
+    <ClInclude Include="..\include\poly_vector.h" />
     <ClInclude Include="..\test\include\mock_allocator.h" />
     <ClInclude Include="..\test\include\test_obj_storage.h" />
     <ClInclude Include="..\test\include\test_poly_obj_storage.h" />
