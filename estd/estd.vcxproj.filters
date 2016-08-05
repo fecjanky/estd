@@ -32,6 +32,9 @@
     <ClInclude Include="..\test\include\test_poly_obj_storage.h">
       <Filter>UTest\Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="..\include\poly_vector.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\test\src\main.cpp">
@@ -47,6 +50,9 @@
       <Filter>UTest\Source Files</Filter>
     </ClCompile>
     <ClCompile Include="..\test\src\test_memory_resource.cpp">
+      <Filter>UTest\Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\test\src\test_poly_vector.cpp">
       <Filter>UTest\Source Files</Filter>
     </ClCompile>
   </ItemGroup>

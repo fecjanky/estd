@@ -41,10 +41,12 @@ static int dummyPolyObjStorage = PullInTestPolyObjStorageLibrary();
 static int dummyMemResource = PullInTestMemResourceLibrary();
 
 extern int func();
+extern void test_poly_vector();
 
 GTEST_API_ int main(int argc, char **argv) {
     func();
     printf("Running main() from " __FILE__ "\n");
     testing::InitGoogleMock(&argc, argv);
+    test_poly_vector();
     return RUN_ALL_TESTS();
 }
