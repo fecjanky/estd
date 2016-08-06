@@ -9,7 +9,7 @@ struct Interface {
 
 class Impl1 : public Interface {
 public:
-    Impl1() : d{} {}
+    Impl1(double dd = 0.0) : d{dd} {}
     void function() override { 
         d += 1.0;
     }
@@ -23,7 +23,15 @@ private:
 };
 void test_poly_vector() {
     estd::poly_vector<Interface> v;
-    v.push_back(Impl1{});
-    v.push_back(Impl1{});
+    v.push_back(Impl1{3.14});
+    v.push_back(Impl1{6.28});
+    for (auto& i : v) {
+        int a = 0;
+        i.function();
+    }
+    for (auto& i : v) {
+        int a = 0;
+    }
+
 
 }

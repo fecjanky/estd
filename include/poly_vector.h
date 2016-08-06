@@ -5,6 +5,8 @@
 #include <cstdint>
 #include <utility>
 #include <tuple>
+#include <algorithm>
+#include <cassert>
 #include "memory.h"
 
 namespace estd {
@@ -86,6 +88,7 @@ namespace estd {
         void tidy() noexcept
         {
             get_allocator().deallocate(reinterpret_cast<uint8_t*>(_storage), size());
+            _storage = _end_storage = nullptr;
         }
         ~allocator_base()
         {
@@ -177,7 +180,10 @@ namespace estd {
         using iterator = poly_vector_iterator<interface_type>;
         using const_iterator = poly_vector_iterator<const interface_type>;
         poly_vector() : _free_elem{}, _begin_storage{}, _free_storage{} {}
-
+        ~poly_vector() 
+        {
+            tidy();
+        }
         template<typename T>
         void push_back(T&& obj)
         {
@@ -187,8 +193,8 @@ namespace estd {
             if (_free_elem == end_elem()) {
                 increase_storage(s, a);
             }
-            auto fs = reinterpret_cast<uintptr_t>(_free_storage);
-            _free_elem->first = reinterpret_cast<void*>(((fs + a - 1) / a)*a);
+            assert(storage_size(next_aligned_storage(a), _end_storage) >= s);
+            _free_elem->first = next_aligned_storage(a);
             _free_elem->second = new (_free_elem->first) TT(std::forward<T>(obj));
             _free_storage = reinterpret_cast<uint8_t*>(_free_elem->first) + s;
             ++_free_elem;
@@ -205,29 +211,57 @@ namespace estd {
         }
 
     private:
+        void_ptr next_aligned_storage(size_t align) const noexcept{
+            auto fs = reinterpret_cast<uintptr_t>(_free_storage);
+            return reinterpret_cast<void_ptr>(((fs + align - 1) / align)*align);
+        }
         using my_base = allocator_base<Allocator>;
         using elem_ptr = std::pair<void_ptr, interface_ptr>;
-        // TODO: poly_uninitialized_copy
-        // TODO: cleanup of this function
-        void increase_storage(size_t curr_elem_size, size_t align) {
-            auto s = curr_elem_size + align;
-            s = s > avg_obj_size() ? s : avg_obj_size();
-            const auto n = size() ? size() * 2 : 1;
-            my_base a(n*s + n*sizeof(elem_ptr),get_allocator());
-            elem_ptr* dest = reinterpret_cast<elem_ptr*>(a._storage);
-            void* dest_storage = dest + n;
-            for (auto src = begin_elem(); src != end_elem();++src,++dest) {
-                dest->first = dest_storage;
-                dest->second = CloningPolicy::Clone(src->second, dest_storage);
-                dest_storage = next_storage_ptr(src);
+        static std::pair<elem_ptr*, void_ptr> poly_uninitialized_copy(
+            elem_ptr* begin, elem_ptr* end, 
+            std::pair<elem_ptr*, void_ptr> f,
+            elem_ptr* dst,size_t n)
+        {
+            auto o_begin = begin;
+            void* dst_storage = dst + n;
+            try {
+                for (; begin != end; ++begin, ++dst) {
+                    dst->first = dst_storage;
+                    dst->second = CloningPolicy::Clone(begin->second, dst_storage);
+                    dst_storage = next_storage_ptr(begin,f.first,f.second,dst_storage);
+                }
+                return std::make_pair(dst, dst_storage);
             }
+            catch (...) {
+                for (; begin != o_begin; --begin) {
+                    begin->second->~IF();
+                }
+                throw;
+            }
+        }
+        void increase_storage(size_t curr_elem_size, size_t align) 
+        {
+            const auto n = size() ? size() * 2 : 1;
+            const auto s = curr_elem_size + align > avg_obj_size() ? curr_elem_size + align : avg_obj_size();
+            // allocate temp storage
+            my_base a(n*s + n*sizeof(elem_ptr),get_allocator());
+            auto ret = poly_uninitialized_copy(
+                begin_elem(), end_elem(), std::make_pair(_free_elem, _free_storage),
+                reinterpret_cast<elem_ptr*>(a._storage),n);
+            tidy();
+            my_base::operator=(std::move(a));
+            _free_elem = ret.first;
+            _free_storage = ret.second;
+            _begin_storage = reinterpret_cast<elem_ptr*>(_storage) + n;
+        }
+
+        void tidy()
+        {
             for (auto src = begin_elem(); src != end_elem(); ++src) {
                 src->second->~IF();
             }
-            my_base::operator=(std::move(a));
-            _free_elem = dest;
-            _begin_storage = reinterpret_cast<elem_ptr*>(_storage) + n;
-            _free_storage = dest_storage;
+            _begin_storage = _free_storage = _free_elem = nullptr;
+            my_base::tidy();
         }
 
         size_t avg_obj_size()const noexcept {
@@ -236,9 +270,14 @@ namespace estd {
 
         size_t storage_size()const noexcept
         {
-            return reinterpret_cast<const uint8_t*>(_free_storage) -
-                reinterpret_cast<const uint8_t*>(_begin_storage);
+            return storage_size(_begin_storage, _free_storage);
         }
+        static size_t storage_size(void_ptr b,void_ptr e) noexcept
+        {
+            return reinterpret_cast<const uint8_t*>(e) -
+                reinterpret_cast<const uint8_t*>(b);
+        }
+
 
         size_t elem_storage_size(const elem_ptr* p)const noexcept
         {
@@ -249,9 +288,11 @@ namespace estd {
                 reinterpret_cast<const uint8_t*>(p->first) - b;
         }
 
-        void* next_storage_ptr(elem_ptr* p) noexcept
+        static void* next_storage_ptr(elem_ptr* p,elem_ptr* end,void* f,void* dst) noexcept
         {
-            return p+1 == _free_elem ? _free_storage : (p + 1)->first;
+            auto b = p->first;
+            auto e = p + 1 == end ? f : (p + 1)->first;
+            return reinterpret_cast<uint8_t*>(dst)+storage_size(b,e);
         }
 
         elem_ptr* begin_elem()noexcept {
