@@ -29,9 +29,14 @@ void test_poly_vector() {
         int a = 0;
         i.function();
     }
+    auto v2 = v;
+    v[0].function();
+    v.pop_back();
+    v.back().function();
     for (auto& i : v) {
         int a = 0;
     }
+    
 
 
 }
