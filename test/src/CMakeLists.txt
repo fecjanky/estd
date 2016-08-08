@@ -4,7 +4,7 @@ enable_testing()
 
 project(estd_test_exe)
 
-set(estd_test_source_files main.cpp test.cpp test_obj_storage.cpp test_poly_obj_storage.cpp test_memory_resource.cpp)
+set(estd_test_source_files main.cpp test.cpp test_obj_storage.cpp test_poly_obj_storage.cpp test_memory_resource.cpp test_poly_vector.cpp)
 
 add_executable(estd_test ${estd_test_source_files})
 

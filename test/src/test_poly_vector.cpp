@@ -22,21 +22,23 @@ private:
     double d;
 };
 void test_poly_vector() {
-    estd::poly_vector<Interface> v;
-    v.push_back(Impl1{3.14});
-    v.push_back(Impl1{6.28});
-    for (auto& i : v) {
-        int a = 0;
-        i.function();
+    int a = 0;
+    {
+        estd::poly_vector<Interface> v;
+        v.push_back( Impl1{ 3.14 } );
+        v.push_back( Impl1{ 6.28 } );
+        for (auto& i : v) {
+            int a = 0;
+            i.function();
+        }
+        auto v2 = v;
+        v[0].function();
+        v.pop_back();
+        v.back().function();
+        for (auto& i : v) {
+            int a = 0;
+        }
     }
-    auto v2 = v;
-    v[0].function();
-    v.pop_back();
-    v.back().function();
-    for (auto& i : v) {
-        int a = 0;
-    }
-    
-
+    a = 1;
 
 }
