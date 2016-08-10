@@ -16,17 +16,40 @@ public:
     virtual Interface* clone(void* dest) {
         return new (dest) Impl1(*this);
     }
-
-
 private:
     double d;
 };
+
+class Impl2 : public Interface
+{
+public:
+    Impl2() {}
+    void function() override
+    {
+        v.push_back( Impl1{ 3.1 } );
+    }
+    virtual Interface* clone( void* dest )
+    {
+        return new (dest) Impl2( *this );
+    }
+private:
+    estd::poly_vector<Interface> v;
+};
+
 void test_poly_vector() {
     int a = 0;
     {
         estd::poly_vector<Interface> v;
+        estd::poly_vector<Interface,std::allocator<uint8_t>, estd::delegate_cloning_policy<Interface> > vdcp;
         v.push_back( Impl1{ 3.14 } );
         v.push_back( Impl1{ 6.28 } );
+        v.push_back( Impl2{} );
+        
+        vdcp.push_back( Impl1{ 3.14 } );
+        vdcp.push_back( Impl2{} );
+
+        auto vdcp2 = vdcp;
+
         for (auto& i : v) {
             int a = 0;
             i.function();

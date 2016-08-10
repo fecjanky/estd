@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cassert>
 #include <stdexcept>
+#include <algorithm>
 #include "memory.h"
 
 namespace estd
@@ -20,6 +21,7 @@ namespace estd
         using value_type = typename allocator_traits::value_type;
         using propagate_on_container_copy_assignment = typename allocator_traits::propagate_on_container_copy_assignment;
         using propagate_on_container_swap = typename allocator_traits::propagate_on_container_swap;
+        using propagate_on_container_move_assignment = typename allocator_traits::propagate_on_container_move_assignment;
         static_assert(std::is_same<value_type, uint8_t>::value, "requires a byte allocator");
         using allocator_type = Allocator;
         using void_ptr = void*;
@@ -142,23 +144,85 @@ namespace estd
         void* _end_storage;
     };
 
+    template<class IF, class CloningPolicy>
+    struct poly_vector_elem_ptr : private CloningPolicy
+    {
+        poly_vector_elem_ptr() = default;
+        template<typename T, typename = std::enable_if_t< std::is_base_of< IF, std::decay_t<T> >::value > >
+        explicit poly_vector_elem_ptr( T&& t, void* s = nullptr, IF* i = nullptr ) noexcept :
+            CloningPolicy( std::forward<T>( t ) ), ptr( s,i )
+        {}
+        poly_vector_elem_ptr( const poly_vector_elem_ptr& other ) noexcept:
+            CloningPolicy( other.policy() ), ptr{ other.ptr }
+        {}
+        poly_vector_elem_ptr& operator=( const poly_vector_elem_ptr & rhs ) noexcept
+        {
+            policy() = rhs.policy();
+            ptr = rhs.ptr;
+        }
+        CloningPolicy& policy()noexcept
+        {
+            return *this;
+        }
+        const CloningPolicy& policy()const noexcept
+        {
+            return *this;
+        }
+        std::pair<void*, IF*> ptr;
+    };
+    
     template<class IF>
     struct DefaultCloningPolicy
     {
-        static IF* Clone( IF* obj, void* dest )
+        DefaultCloningPolicy() = default;
+        template<typename T>
+        DefaultCloningPolicy( T&& t ) {};
+        IF* clone( IF* obj, void* dest ) const
         {
             return obj->clone( dest );
         }
     };
 
-    template<class IF>
+    template<class Interface>
+    struct delegate_cloning_policy
+    {
+        typedef Interface* (*clone_func_t)(const Interface* obj, void* dest);
+
+        delegate_cloning_policy() :cf{} {}
+
+        template < 
+            typename T, 
+            typename = std::enable_if_t<!std::is_same<delegate_cloning_policy,std::decay_t<T>>::value >
+        >
+        delegate_cloning_policy( T&& t ) noexcept :
+            cf ( & delegate_cloning_policy::clone_func< std::decay_t<T> > ){};
+
+        delegate_cloning_policy( const delegate_cloning_policy & other ) noexcept : cf { other.cf }{}
+        
+        template<class T>
+        static Interface* clone_func( const Interface* obj, void* dest )
+        {
+            return new(dest) T( *static_cast<const T*>(obj) );
+        }
+
+        Interface* clone( Interface* obj, void* dest ) const
+        {
+            return cf(obj,dest);
+        }
+
+        /////////////////////////
+        clone_func_t cf;
+    };
+
+
+    template<class IF,class CP>
     class poly_vector_iterator
     {
     public:
         using void_ptr = void*;
         using interface_type = IF;
         using interface_ptr = interface_type*;
-        using elem_ptr = std::pair<void_ptr, interface_ptr>;
+        using elem_ptr = poly_vector_elem_ptr<IF, CP>;
 
         poly_vector_iterator() : curr{} {}
         explicit poly_vector_iterator( elem_ptr* p ) : curr{ p } {}
@@ -168,19 +232,19 @@ namespace estd
 
         IF* operator->() noexcept
         {
-            return curr->second;
+            return curr->ptr.second;
         }
         IF& operator*()noexcept
         {
-            return *curr->second;
+            return *curr->ptr.second;
         }
         const IF* operator->() const noexcept
         {
-            return curr->second;
+            return curr->ptr.second;
         }
         const IF& operator*()const noexcept
         {
-            return *curr->second;
+            return *curr->ptr.second;
         }
 
         poly_vector_iterator& operator++()noexcept
@@ -218,8 +282,15 @@ namespace estd
         elem_ptr* curr;
     };
 
-    template<class IF, class Allocator = std::allocator<uint8_t>, class CloningPolicy = DefaultCloningPolicy<IF> >
-    class poly_vector : private allocator_base<Allocator>
+    template<
+        class IF, 
+        class Allocator = std::allocator<uint8_t>, 
+        class CloningPolicy = DefaultCloningPolicy<IF> 
+    >
+    class poly_vector : 
+        private allocator_base<
+            typename std::allocator_traits<Allocator>::template rebind_alloc<uint8_t>
+        >
     {
     public:
         ///////////////////////////////////////////////
@@ -234,8 +305,8 @@ namespace estd
         using allocator_traits = typename allocator_base::allocator_traits;
         using void_ptr = void*;
         using size_type = std::size_t;
-        using iterator = poly_vector_iterator<interface_type>;
-        using const_iterator = poly_vector_iterator<const interface_type>;
+        using iterator = poly_vector_iterator<interface_type,CloningPolicy>;
+        using const_iterator = poly_vector_iterator<const interface_type,const CloningPolicy>;
 
         static constexpr auto default_avg_size = 4 * sizeof( void* );
         static_assert(std::is_polymorphic<interface_type>::value, "IF is not polymorphic");
@@ -261,11 +332,12 @@ namespace estd
         {
             other._begin_storage = other._free_storage = other._free_elem = nullptr;
         }
+        // TODO: assignment operators
         ///////////////////////////////////////////////
         // Modifiers
         ///////////////////////////////////////////////
         template<typename T>
-        std::enable_if_t<std::is_base_of<interface_type,std::decay_t<T>>::value> 
+        std::enable_if_t<std::is_base_of<interface_type, std::decay_t<T>>::value>
             push_back( T&& obj )
         {
             using TT = std::decay_t<T>;
@@ -275,17 +347,17 @@ namespace estd
                 increase_storage( s, a );
             }
             assert( storage_size( next_aligned_storage( a ), end_storage() ) >= s );
-            _free_elem->first = next_aligned_storage( a );
-            // TODO: should use allocator::construct() instead of direct placement new
-            _free_elem->second = new (_free_elem->first) TT( std::forward<T>( obj ) );
-            _free_storage = reinterpret_cast<uint8_t*>(_free_elem->first) + s;
+            auto nas = next_aligned_storage( a );
+            _free_elem = new (_free_elem) elem_ptr( std::forward<T>( obj ),
+                nas, new (nas) TT( std::forward<T>( obj ) ) );
+            _free_storage = reinterpret_cast<uint8_t*>(_free_elem->ptr.first) + s;
             ++_free_elem;
         }
         void pop_back()noexcept
         {
             back().~IF();
-            _free_storage = begin_elem()[size() - 1].first;
-            begin_elem()[size() - 1].first = begin_elem()[size() - 1].second = nullptr;
+            _free_storage = begin_elem()[size() - 1].ptr.first;
+            begin_elem()[size() - 1].ptr.first = begin_elem()[size() - 1].ptr.second = nullptr;
             _free_elem = &begin_elem()[size() - 1];
         }
         void clear() noexcept
@@ -300,6 +372,7 @@ namespace estd
             swap( _begin_storage, x._begin_storage );
             swap( _free_storage, x._free_storage );
         }
+        // TODO: insert, erase,emplace, emplace_back, assign?
         ///////////////////////////////////////////////
         // Iterators
         ///////////////////////////////////////////////
@@ -362,11 +435,11 @@ namespace estd
         ///////////////////////////////////////////////
         interface_reference operator[]( size_t n ) noexcept
         {
-            return *begin_elem()[n].second;
+            return *begin_elem()[n].ptr.second;
         }
         const_interface_reference operator[]( size_t n )const noexcept
         {
-            return *begin_elem()[n].second;
+            return *begin_elem()[n].ptr.second;
         }
         interface_reference at( size_t n )
         {
@@ -397,7 +470,7 @@ namespace estd
 
     private:
         using my_base = allocator_base<Allocator>;
-        using elem_ptr = std::pair<void_ptr, interface_ptr>;
+        using elem_ptr = poly_vector_elem_ptr<interface_type, CloningPolicy>;
 
         my_base& base()noexcept
         {
@@ -413,9 +486,14 @@ namespace estd
         }
         void_ptr next_aligned_storage( size_t align ) const noexcept
         {
-            auto fs = reinterpret_cast<uintptr_t>(_free_storage);
+            return next_aligned_storage( _free_storage, align );
+        }
+        static void_ptr next_aligned_storage(void*p, size_t align ) noexcept
+        {
+            auto fs = reinterpret_cast<uintptr_t>(p);
             return reinterpret_cast<void_ptr>(((fs + align - 1) / align)*align);
         }
+
 
         std::pair<elem_ptr*, void_ptr> poly_uninitialized_copy(elem_ptr* dst, size_t n ) const
         {
@@ -423,14 +501,15 @@ namespace estd
             void_ptr dst_storage = dst + n;
             try {
                 for (; elem != _free_elem; ++elem, ++dst) {
-                    dst->first = dst_storage;
-                    dst->second = CloningPolicy::Clone( elem->second, dst_storage );
+                    dst = new (dst) elem_ptr( *elem );
+                    dst->ptr.first = dst_storage;
+                    dst->ptr.second = elem->policy().clone( elem->ptr.second, dst_storage );
                     dst_storage = next_storage_ptr( elem, dst_storage );
                 }
                 return std::make_pair( dst, dst_storage );
             } catch (...) {
                 for (; elem != begin_elem(); --elem) {
-                    elem->second->~IF();
+                    elem->ptr.second->~IF();
                 }
                 throw;
             }
@@ -458,17 +537,21 @@ namespace estd
             size_t curr_elem_size, size_t align ) const noexcept
         {
             const auto n = size() ? size() * 2 : 1;
-            const auto s = curr_elem_size > avg_obj_size() ? curr_elem_size : avg_obj_size();
-            const auto next_storage = reinterpret_cast<uint8_t*>(next_aligned_storage( align )) ;
-            const auto min_st_size = storage_size( _begin_storage, next_storage + curr_elem_size );
-            const auto ss = (n*s < min_st_size ? min_st_size : n*s) + n*sizeof( elem_ptr );
+            const auto s = std::max( curr_elem_size, avg_obj_size() );
+            const auto begin_elem_storage = reinterpret_cast<uint8_t*>(nullptr);
+            const auto begin_storage = begin_elem_storage + n*sizeof( elem_ptr );
+            const auto next_storage = reinterpret_cast<uint8_t*>(next_aligned_storage( begin_storage, align )) ;
+            //const auto end_storage = 
+            //storage_size(capacity()*sizeof(elem_ptr)+base().storage(),begin_storage())
+            const auto min_st_size = storage_size( begin_storage+n*sizeof(elem_ptr), next_storage + curr_elem_size );
+            const auto ss = std::max(n*s,min_st_size) + n*sizeof( elem_ptr );
             return std::make_pair( n, ss);
         }
 
         void tidy() noexcept
         {
             for (auto src = begin_elem(); src != _free_elem; ++src) {
-                src->second->~IF();
+                src->ptr.second->~IF();
             }
             _begin_storage = _free_storage = _free_elem = nullptr;
             my_base::tidy();
@@ -483,6 +566,17 @@ namespace estd
         {
             return storage_size( _begin_storage, _free_storage );
         }
+
+        size_t aligned_full_storage_size()const noexcept
+        {
+            return empty()? 0 :storage_size( begin_elem()->ptr.first, base().end_storage() );
+        }
+
+        size_t alignment() const noexcept
+        {
+            return empty() ? 0 : storage_size( _begin_storage, begin_elem()->ptr.first );
+        }
+
         static size_t storage_size( const void_ptr b, const void_ptr e ) noexcept
         {
             return reinterpret_cast<const uint8_t*>(e) -
@@ -491,8 +585,8 @@ namespace estd
 
         void* next_storage_ptr( const elem_ptr* p, void* dst )const noexcept
         {
-            auto b = p->first;
-            auto e = p + 1 == _free_elem ? _free_storage : (p + 1)->first;
+            auto b = p->ptr.first;
+            auto e = p + 1 == _free_elem ? _free_storage : (p + 1)->ptr.first;
             return reinterpret_cast<uint8_t*>(dst) + storage_size( b, e );
         }
 
@@ -512,7 +606,13 @@ namespace estd
         {
             return reinterpret_cast<const elem_ptr*>(_begin_storage);
         }
-
+        ////////////////////////////
+        // Misc.
+        ////////////////////////////
+        allocator_type get_allocator() const noexcept
+        {
+            return my_base::get_allocator_ref();
+        }
         ////////////////////////////
         // Members
         ////////////////////////////
@@ -521,6 +621,7 @@ namespace estd
         void* _free_storage;
     };
 
+    // TODO: relational operators, swap
 }  // namespace estd
 
 #endif  //POLY_VECTOR_H_
