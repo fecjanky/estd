@@ -57,6 +57,6 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <Natvis Include="NatvisFile.natvis" />
+    <Natvis Include="poly_vector.natvis" />
   </ItemGroup>
 </Project>

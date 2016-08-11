@@ -1,5 +1,7 @@
 #include "poly_vector.h"
 
+#include <iostream>
+#include <vector>
 
 struct Interface {
     virtual void function() = 0;
@@ -36,9 +38,21 @@ private:
     estd::poly_vector<Interface> v;
 };
 
+struct alignas(64) ts
+{
+    int a;
+};
+
 void test_poly_vector() {
     int a = 0;
     {
+        std::vector<ts> tv;
+        tv.push_back( ts{ 2 } );
+        tv.push_back( ts{ 4 } );
+        for (auto& x : tv) {
+            std::cout << x.a <<std::endl;
+        }
+        std::cout << reinterpret_cast<uint8_t*>( &tv[1]) - reinterpret_cast<uint8_t*>(&tv[0]) << std::endl;
         estd::poly_vector<Interface> v;
         estd::poly_vector<Interface,std::allocator<uint8_t>, estd::delegate_cloning_policy<Interface> > vdcp;
         v.push_back( Impl1{ 3.14 } );

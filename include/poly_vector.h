@@ -147,18 +147,21 @@ namespace estd
     template<class IF, class CloningPolicy>
     struct poly_vector_elem_ptr : private CloningPolicy
     {
-        poly_vector_elem_ptr() = default;
+        poly_vector_elem_ptr() : size{} {}
         template<typename T, typename = std::enable_if_t< std::is_base_of< IF, std::decay_t<T> >::value > >
         explicit poly_vector_elem_ptr( T&& t, void* s = nullptr, IF* i = nullptr ) noexcept :
-            CloningPolicy( std::forward<T>( t ) ), ptr( s,i )
+            CloningPolicy( std::forward<T>( t ) ), ptr{ s, i }, size{ sizeof( std::decay_t<T> ) },
+            align{ alignof( std::decay_t<T> ) }
         {}
         poly_vector_elem_ptr( const poly_vector_elem_ptr& other ) noexcept:
-            CloningPolicy( other.policy() ), ptr{ other.ptr }
+            CloningPolicy( other.policy() ), ptr{ other.ptr },size{other.size},align{other.align}
         {}
         poly_vector_elem_ptr& operator=( const poly_vector_elem_ptr & rhs ) noexcept
         {
             policy() = rhs.policy();
             ptr = rhs.ptr;
+            size = rhs.size;
+            align = rhs.align;
         }
         CloningPolicy& policy()noexcept
         {
@@ -168,7 +171,15 @@ namespace estd
         {
             return *this;
         }
+        ~poly_vector_elem_ptr()
+        {
+            ptr.first = ptr.second = nullptr;
+            size = 0;
+            align = 0;
+        }
         std::pair<void*, IF*> ptr;
+        size_t size;
+        size_t align;
     };
     
     template<class IF>
@@ -343,10 +354,9 @@ namespace estd
             using TT = std::decay_t<T>;
             constexpr auto s = sizeof( TT );
             constexpr auto a = alignof(TT);
-            if (_free_elem == end_elem()) {
+            if (_free_elem == end_elem() || !can_construct(s,a)) {
                 increase_storage( s, a );
             }
-            assert( storage_size( next_aligned_storage( a ), end_storage() ) >= s );
             auto nas = next_aligned_storage( a );
             _free_elem = new (_free_elem) elem_ptr( std::forward<T>( obj ),
                 nas, new (nas) TT( std::forward<T>( obj ) ) );
@@ -356,8 +366,9 @@ namespace estd
         void pop_back()noexcept
         {
             back().~IF();
-            _free_storage = begin_elem()[size() - 1].ptr.first;
-            begin_elem()[size() - 1].ptr.first = begin_elem()[size() - 1].ptr.second = nullptr;
+            _free_storage = size()>1 ? reinterpret_cast<uint8_t*>(begin_elem()[size() - 2].ptr.first) + 
+                begin_elem()[size() - 2].size : _begin_storage;
+            begin_elem()[size() - 1].~poly_vector_elem_ptr();
             _free_elem = &begin_elem()[size() - 1];
         }
         void clear() noexcept
@@ -497,31 +508,51 @@ namespace estd
 
         std::pair<elem_ptr*, void_ptr> poly_uninitialized_copy(elem_ptr* dst, size_t n ) const
         {
-            auto elem = begin_elem();
+            auto dst_begin = dst;
             void_ptr dst_storage = dst + n;
             try {
-                for (; elem != _free_elem; ++elem, ++dst) {
+                for (auto elem = begin_elem(); elem != _free_elem; ++elem, ++dst) {
                     dst = new (dst) elem_ptr( *elem );
-                    dst->ptr.first = dst_storage;
-                    dst->ptr.second = elem->policy().clone( elem->ptr.second, dst_storage );
-                    dst_storage = next_storage_ptr( elem, dst_storage );
+                    dst->ptr.first = next_aligned_storage( dst_storage, elem->align );
+                    dst->ptr.second = elem->policy().clone( elem->ptr.second, dst->ptr.first );
+                    dst_storage = reinterpret_cast<uint8_t*>(dst->ptr.first) + dst->size;
                 }
                 return std::make_pair( dst, dst_storage );
             } catch (...) {
-                for (; elem != begin_elem(); --elem) {
-                    elem->ptr.second->~IF();
+                for (; dst != dst_begin; --dst) {
+                    dst->ptr.second->~IF();
                 }
                 throw;
             }
         }
         void increase_storage( size_t curr_elem_size, size_t align )
         {
-            auto new_size = calc_increased_storage_size( curr_elem_size, align );
-            my_base a( new_size.second,
-                allocator_traits::select_on_container_copy_construction( get_allocator_ref() ) );
-            obtain_storage( std::move( a ), new_size.first );
+            std::pair<size_type, size_type> n{size(),size_type(0)};
+            my_base s{};
+            do {
+                n = calc_increased_storage_size(n.first,curr_elem_size, align );
+                s = my_base( n.second,
+                    allocator_traits::select_on_container_copy_construction( get_allocator_ref() ) );
+            } while (!can_fully_construct_to( s.storage(), s.end_storage(), n.first, curr_elem_size, align ));
+            obtain_storage( std::move( s ), n.first );
         }
-
+        bool can_construct( size_t s, size_t align )
+        {
+            auto free = reinterpret_cast<uint8_t*>(next_aligned_storage( _free_storage, align ));
+            return free + s <= end_storage();
+        }
+        bool can_fully_construct_to( void* start, void* end , size_t n, size_t size,size_t align)
+        {
+            start = reinterpret_cast<uint8_t*>(start) + n*sizeof( elem_ptr );
+            for (auto p = begin_elem(); p != end_elem() && start <= end; ++p) {
+                start = next_aligned_storage( start,p->align);
+                start = reinterpret_cast<uint8_t*>(start) + p->size;
+            }
+            // at leaset one new object should be constructed
+            start = next_aligned_storage( start, align );
+            start = reinterpret_cast<uint8_t*>(start) + size;
+            return start <= end;
+        }
         void obtain_storage( my_base&& a, size_t n)
         {
             auto ret = poly_uninitialized_copy(
@@ -534,18 +565,18 @@ namespace estd
         }
 
         std::pair<size_type, size_type> calc_increased_storage_size(
-            size_t curr_elem_size, size_t align ) const noexcept
+            size_t n,size_t curr_elem_size, size_t align ) const noexcept
         {
-            const auto n = size() ? size() * 2 : 1;
+            n = n ? n * 2 : size_t(1);
             const auto s = std::max( curr_elem_size, avg_obj_size() );
-            const auto begin_elem_storage = reinterpret_cast<uint8_t*>(nullptr);
-            const auto begin_storage = begin_elem_storage + n*sizeof( elem_ptr );
-            const auto next_storage = reinterpret_cast<uint8_t*>(next_aligned_storage( begin_storage, align )) ;
-            //const auto end_storage = 
-            //storage_size(capacity()*sizeof(elem_ptr)+base().storage(),begin_storage())
-            const auto min_st_size = storage_size( begin_storage+n*sizeof(elem_ptr), next_storage + curr_elem_size );
-            const auto ss = std::max(n*s,min_st_size) + n*sizeof( elem_ptr );
-            return std::make_pair( n, ss);
+            auto begin = reinterpret_cast<uint8_t*>(nullptr);
+            const auto first_align = !empty() ? begin_elem()->align : alignof( std::max_align_t );
+            auto end = reinterpret_cast<uint8_t*>(
+                next_aligned_storage( begin + n*sizeof( elem_ptr ), first_align ));
+            end += storage_size( _begin_storage, end_storage() );
+            end = reinterpret_cast<uint8_t*>(next_aligned_storage( end, align ));
+            end += n*std::max( s, align );
+            return std::make_pair( n, storage_size( begin, end ) );
         }
 
         void tidy() noexcept
@@ -572,12 +603,12 @@ namespace estd
             return empty()? 0 :storage_size( begin_elem()->ptr.first, base().end_storage() );
         }
 
-        size_t alignment() const noexcept
+        size_t alignment_of_first_elem() const noexcept
         {
             return empty() ? 0 : storage_size( _begin_storage, begin_elem()->ptr.first );
         }
 
-        static size_t storage_size( const void_ptr b, const void_ptr e ) noexcept
+        static size_t storage_size( const void* b, const void* e ) noexcept
         {
             return reinterpret_cast<const uint8_t*>(e) -
                 reinterpret_cast<const uint8_t*>(b);

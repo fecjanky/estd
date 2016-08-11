@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?> 
-<AutoVisualizer xmlns="http://schemas.microsoft.com/vstudio/debugger/natvis/2010">
-	<Type Name="estd::poly_vector&lt;*&gt;">
-		<DisplayString>{{ size={size()} }}</DisplayString>
-		<Expand>
-			<Item Name="[size]" ExcludeView="simple">size()</Item>
-		</Expand>
-	</Type>
-</AutoVisualizer>

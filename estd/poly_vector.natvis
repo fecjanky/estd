@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?> 
+<AutoVisualizer xmlns="http://schemas.microsoft.com/vstudio/debugger/natvis/2010">
+	<Type Name="estd::poly_vector&lt;*&gt;">
+		<DisplayString>{{ size={_free_elem-reinterpret_cast&lt;elem_ptr*&gt;(_storage)} }}</DisplayString>
+		<Expand>
+			<Item Name="capacity">reinterpret_cast&lt;elem_ptr*&gt;(_begin_storage)-reinterpret_cast&lt;elem_ptr*&gt;(_storage)</Item>
+			<Item Name="allocator">*static_cast&lt;allocator_type*&gt;(this)</Item>
+			<IndexListItems>
+				<Size>_free_elem-reinterpret_cast&lt;elem_ptr*&gt;(_storage)</Size>
+				<ValueNode>*(((elem_ptr*)_storage)[$i].ptr.second)</ValueNode>
+			</IndexListItems>
+		</Expand>
+	</Type>
+</AutoVisualizer>
