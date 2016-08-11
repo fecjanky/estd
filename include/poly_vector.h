@@ -436,6 +436,7 @@ namespace estd
         {
             if (n < size()) return;
             if (n > max_size())throw std::length_error( "poly_vector reserve size too big" );
+            // TODO: check if aligment criteria holds
             my_base a( storage_size_of( n, avg_size ),
                 allocator_traits::select_on_container_copy_construction( get_allocator_ref() ) );
             obtain_storage( std::move( a ), size() );
@@ -551,6 +552,7 @@ namespace estd
             // at leaset one new object should be constructed
             start = next_aligned_storage( start, align );
             start = reinterpret_cast<uint8_t*>(start) + size;
+            // TODO: re-pivot begin_storage if ther is too much headroom
             return start <= end;
         }
         void obtain_storage( my_base&& a, size_t n)
@@ -598,27 +600,10 @@ namespace estd
             return storage_size( _begin_storage, _free_storage );
         }
 
-        size_t aligned_full_storage_size()const noexcept
-        {
-            return empty()? 0 :storage_size( begin_elem()->ptr.first, base().end_storage() );
-        }
-
-        size_t alignment_of_first_elem() const noexcept
-        {
-            return empty() ? 0 : storage_size( _begin_storage, begin_elem()->ptr.first );
-        }
-
         static size_t storage_size( const void* b, const void* e ) noexcept
         {
             return reinterpret_cast<const uint8_t*>(e) -
                 reinterpret_cast<const uint8_t*>(b);
-        }
-
-        void* next_storage_ptr( const elem_ptr* p, void* dst )const noexcept
-        {
-            auto b = p->ptr.first;
-            auto e = p + 1 == _free_elem ? _free_storage : (p + 1)->ptr.first;
-            return reinterpret_cast<uint8_t*>(dst) + storage_size( b, e );
         }
 
         elem_ptr* begin_elem()noexcept

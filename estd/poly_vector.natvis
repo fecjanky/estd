@@ -5,6 +5,9 @@
 		<Expand>
 			<Item Name="capacity">reinterpret_cast&lt;elem_ptr*&gt;(_begin_storage)-reinterpret_cast&lt;elem_ptr*&gt;(_storage)</Item>
 			<Item Name="allocator">*static_cast&lt;allocator_type*&gt;(this)</Item>
+			<Item Name="average object size" Condition="_free_elem-(elem_ptr*)_storage > 0">((uint8_t*)_free_storage - (uint8_t*)_begin_storage +(_free_elem-(elem_ptr*)_storage) - 1)/(_free_elem-(elem_ptr*)_storage)</Item>
+			<Item Name="storage size" Condition="(uint8_t*)_end_storage-(uint8_t*)_storage > 0">(uint8_t*)_end_storage-(uint8_t*)_storage</Item>
+			<Item Name="storage headroom" Condition="(uint8_t*)_end_storage-(uint8_t*)_storage > 0">(uint8_t*)_end_storage-(uint8_t*)_free_storage</Item>
 			<IndexListItems>
 				<Size>_free_elem-reinterpret_cast&lt;elem_ptr*&gt;(_storage)</Size>
 				<ValueNode>*(((elem_ptr*)_storage)[$i].ptr.second)</ValueNode>

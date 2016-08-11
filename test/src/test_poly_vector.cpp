@@ -58,6 +58,9 @@ void test_poly_vector() {
         v.push_back( Impl1{ 3.14 } );
         v.push_back( Impl1{ 6.28 } );
         v.push_back( Impl2{} );
+        v.push_back( Impl2{} );
+        v.push_back( Impl1{ 6.28 } );
+        v.push_back( Impl2{} );
         
         vdcp.push_back( Impl1{ 3.14 } );
         vdcp.push_back( Impl2{} );
