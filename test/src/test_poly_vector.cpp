@@ -12,7 +12,7 @@ void test_poly_vector() {
     int a = 0;
     {
         estd::poly_vector<Interface> v;
-        estd::poly_vector<Interface,std::allocator<uint8_t>, estd::delegate_cloning_policy<Interface> > vdcp;
+        estd::poly_vector<Interface,std::allocator<Interface>, estd::delegate_cloning_policy<Interface> > vdcp;
         v.push_back( Impl1{ 3.14 } );
         v.push_back( Impl1{ 6.28 } );
         v.push_back( Impl2{} );

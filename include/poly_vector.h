@@ -376,7 +376,7 @@ namespace estd
         using const_interface_ptr = const interface_type*;
         using interface_reference = interface_type&;
         using const_interface_reference = const interface_type&;
-        using allocator_type = Allocator;
+        using allocator_type = typename std::allocator_traits<Allocator>::template rebind_alloc<uint8_t>;
         using allocator_traits = typename allocator_base::allocator_traits;
         using void_ptr = void*;
         using size_type = std::size_t;
@@ -393,7 +393,7 @@ namespace estd
         {
             tidy();
         }
-        poly_vector( const poly_vector& other ) : allocator_base<Allocator>(other.base()),
+        poly_vector( const poly_vector& other ) : allocator_base<allocator_type>(other.base()),
             _free_elem{begin_elem()}, _begin_storage{ begin_elem() + other.size()},
             _free_storage{_begin_storage}
         {
@@ -401,7 +401,7 @@ namespace estd
             _free_elem = ret.first;
             _free_storage = ret.second;
         }
-        poly_vector( poly_vector&& other ) : allocator_base<Allocator>( std::move( other.base() ) ),
+        poly_vector( poly_vector&& other ) : allocator_base<allocator_type>( std::move( other.base() ) ),
             _free_elem{ other._free_elem }, _begin_storage{ other._begin_storage },
             _free_storage{ other._free_storage }
         {
@@ -545,7 +545,7 @@ namespace estd
         }
 
     private:
-        using my_base = allocator_base<Allocator>;
+        using my_base = allocator_base<allocator_type>;
         using elem_ptr = poly_vector_elem_ptr<interface_type, CloningPolicy>;
         using alloc_descr_t = std::pair<bool, std::pair<size_t, size_t>>;
 
