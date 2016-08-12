@@ -214,14 +214,43 @@ namespace estd
     };
     
     template<class IF>
-    struct DefaultCloningPolicy
+    struct virtual_cloning_policy
     {
-        DefaultCloningPolicy() = default;
+        static constexpr bool noexcept_moveable = noexcept(std::declval<IF*>()->move(std::declval<void*>()));
+        virtual_cloning_policy() = default;
         template<typename T>
-        DefaultCloningPolicy( T&& t ) {};
+        virtual_cloning_policy( T&& t ) {};
         IF* clone( IF* obj, void* dest ) const
         {
             return obj->clone( dest );
+        }
+        IF* move( IF* obj, void* dest ) const noexcept(noexcept_move)
+        {
+            return obj->clone( dest );
+        }
+    };
+
+    template<class IF>
+    struct no_cloning_policy
+    {
+        struct exception : public std::exception
+        {
+            const char* const what() const noexcept override
+            {
+                return "cloning attempt with no_cloning_policy";
+            }
+        };
+        static constexpr bool noexcept_moveable = false;
+        no_cloning_policy() = default;
+        template<typename T>
+        no_cloning_policy( T&& t ) {};
+        IF* clone( IF* obj, void* dest ) const
+        {
+            throw exception{};
+        }
+        IF* move( IF* obj, void* dest ) const
+        {
+            throw exception{};
         }
     };
 
@@ -229,7 +258,7 @@ namespace estd
     struct delegate_cloning_policy
     {
         typedef Interface* (*clone_func_t)(const Interface* obj, void* dest);
-
+        static constexpr bool noexcept_moveable = true;
         delegate_cloning_policy() :cf{} {}
 
         template < 
@@ -237,7 +266,11 @@ namespace estd
             typename = std::enable_if_t<!std::is_same<delegate_cloning_policy,std::decay_t<T>>::value >
         >
         delegate_cloning_policy( T&& t ) noexcept :
-            cf ( & delegate_cloning_policy::clone_func< std::decay_t<T> > ){};
+            cf ( & delegate_cloning_policy::clone_func< std::decay_t<T> > )
+        {
+            static_assert(std::is_nothrow_move_constructible<std::decay_t<T>>::value,
+                "delegate cloning policy requires noexcept move constructor");
+        };
 
         delegate_cloning_policy( const delegate_cloning_policy & other ) noexcept : cf { other.cf }{}
         
@@ -327,7 +360,7 @@ namespace estd
     template<
         class IF, 
         class Allocator = std::allocator<uint8_t>, 
-        class CloningPolicy = DefaultCloningPolicy<IF> 
+        class CloningPolicy = virtual_cloning_policy<IF> 
     >
     class poly_vector : 
         private allocator_base<
