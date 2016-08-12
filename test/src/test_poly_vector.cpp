@@ -66,6 +66,9 @@ void test_poly_vector() {
         vdcp.push_back( Impl2{} );
 
         auto vdcp2 = vdcp;
+        for (auto i = v.begin(); i != v.end(); ++i) {
+            i->function();
+        }
 
         for (auto& i : v) {
             int a = 0;

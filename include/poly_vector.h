@@ -147,21 +147,20 @@ namespace estd
     template<class IF, class CloningPolicy>
     struct poly_vector_elem_ptr : private CloningPolicy
     {
-        poly_vector_elem_ptr() : size{} {}
+        using size_func_t = std::pair<size_t, size_t>();
+        poly_vector_elem_ptr() : size{}, sf{} {}
         template<typename T, typename = std::enable_if_t< std::is_base_of< IF, std::decay_t<T> >::value > >
         explicit poly_vector_elem_ptr( T&& t, void* s = nullptr, IF* i = nullptr ) noexcept :
-            CloningPolicy( std::forward<T>( t ) ), ptr{ s, i }, size{ sizeof( std::decay_t<T> ) },
-            align{ alignof( std::decay_t<T> ) }
+            CloningPolicy( std::forward<T>( t ) ), ptr{ s, i }, sf{ &size_func<std::decay_t<T>> }
         {}
         poly_vector_elem_ptr( const poly_vector_elem_ptr& other ) noexcept:
-            CloningPolicy( other.policy() ), ptr{ other.ptr },size{other.size},align{other.align}
+            CloningPolicy( other.policy() ), ptr{ other.ptr },sf{other.sf}
         {}
         poly_vector_elem_ptr& operator=( const poly_vector_elem_ptr & rhs ) noexcept
         {
             policy() = rhs.policy();
             ptr = rhs.ptr;
-            size = rhs.size;
-            align = rhs.align;
+            sf = rhs.sf;
         }
         CloningPolicy& policy()noexcept
         {
@@ -171,15 +170,28 @@ namespace estd
         {
             return *this;
         }
+        size_t size()const noexcept
+        {
+            return sf().first;
+        }
+        size_t align() const noexcept
+        {
+            return sf().second;
+        }
+        template<typename T>
+        static std::pair<size_t, size_t> size_func()
+        {
+            return std::make_pair( sizeof( T ), alignof(T) );
+        }
         ~poly_vector_elem_ptr()
         {
             ptr.first = ptr.second = nullptr;
-            size = 0;
-            align = 0;
+            sf = nullptr;
         }
+
         std::pair<void*, IF*> ptr;
-        size_t size;
-        size_t align;
+    private:
+        size_func_t* sf;
     };
     
     template<class IF>
@@ -367,7 +379,7 @@ namespace estd
         {
             back().~IF();
             _free_storage = size()>1 ? reinterpret_cast<uint8_t*>(begin_elem()[size() - 2].ptr.first) + 
-                begin_elem()[size() - 2].size : _begin_storage;
+                begin_elem()[size() - 2].size() : _begin_storage;
             begin_elem()[size() - 1].~poly_vector_elem_ptr();
             _free_elem = &begin_elem()[size() - 1];
         }
@@ -514,9 +526,9 @@ namespace estd
             try {
                 for (auto elem = begin_elem(); elem != _free_elem; ++elem, ++dst) {
                     dst = new (dst) elem_ptr( *elem );
-                    dst->ptr.first = next_aligned_storage( dst_storage, elem->align );
+                    dst->ptr.first = next_aligned_storage( dst_storage, elem->align() );
                     dst->ptr.second = elem->policy().clone( elem->ptr.second, dst->ptr.first );
-                    dst_storage = reinterpret_cast<uint8_t*>(dst->ptr.first) + dst->size;
+                    dst_storage = reinterpret_cast<uint8_t*>(dst->ptr.first) + dst->size();
                 }
                 return std::make_pair( dst, dst_storage );
             } catch (...) {
@@ -546,8 +558,8 @@ namespace estd
         {
             start = reinterpret_cast<uint8_t*>(start) + n*sizeof( elem_ptr );
             for (auto p = begin_elem(); p != end_elem() && start <= end; ++p) {
-                start = next_aligned_storage( start,p->align);
-                start = reinterpret_cast<uint8_t*>(start) + p->size;
+                start = next_aligned_storage( start,p->align());
+                start = reinterpret_cast<uint8_t*>(start) + p->size();
             }
             // at leaset one new object should be constructed
             start = next_aligned_storage( start, align );
@@ -572,7 +584,7 @@ namespace estd
             n = n ? n * 2 : size_t(1);
             const auto s = std::max( curr_elem_size, avg_obj_size() );
             auto begin = reinterpret_cast<uint8_t*>(nullptr);
-            const auto first_align = !empty() ? begin_elem()->align : alignof( std::max_align_t );
+            const auto first_align = !empty() ? begin_elem()->align() : alignof( std::max_align_t );
             auto end = reinterpret_cast<uint8_t*>(
                 next_aligned_storage( begin + n*sizeof( elem_ptr ), first_align ));
             end += storage_size( _begin_storage, end_storage() );
@@ -612,7 +624,7 @@ namespace estd
         }
         elem_ptr* end_elem()noexcept
         {
-            return reinterpret_cast<elem_ptr*>(_begin_storage);
+            return reinterpret_cast<elem_ptr*>(_free_elem);
         }
         const elem_ptr* begin_elem()const noexcept
         {
