@@ -136,6 +136,7 @@
     <ClInclude Include="..\test\include\mock_allocator.h" />
     <ClInclude Include="..\test\include\test_obj_storage.h" />
     <ClInclude Include="..\test\include\test_poly_obj_storage.h" />
+    <ClInclude Include="..\test\include\test_poly_vector.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\test\src\main.cpp" />

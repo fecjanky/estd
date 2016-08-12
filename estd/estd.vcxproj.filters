@@ -35,6 +35,9 @@
     <ClInclude Include="..\include\poly_vector.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="..\test\include\test_poly_vector.h">
+      <Filter>UTest\Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\test\src\main.cpp">
