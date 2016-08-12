@@ -556,6 +556,24 @@ namespace estd
             auto free = reinterpret_cast<uint8_t*>(next_aligned_storage( _free_storage, align ));
             return free + s <= end_storage();
         }
+        static void* next_storage_for_object( void* s, size_t size, size_t align )
+        {
+            s = next_aligned_storage( s, align );
+            s = reinterpret_cast<uint8_t*>(s) + size;
+            return s;
+        }
+        size_t new_avg_obj_size( size_t new_object_size )
+        {
+            return (this->size()*avg_obj_size() + new_object_size + this->size()) /
+                (this->size() + 1);
+        }
+        static size_t estimate_excess( void* s, void* e, alloc_descr_t n, size_t avg )
+        {
+            auto es = storage_size( reinterpret_cast<uint8_t*>(s) + n.second.first*avg, e );
+            auto en = (es + (sizeof( elem_ptr ) + avg) - 1) / (sizeof( elem_ptr ) + avg);
+            return std::max( size_t(1), en );
+        }
+
         alloc_descr_t validate_layout( void* const start, void* const end, const alloc_descr_t n,
             const size_t size, const size_t align )
         {
@@ -563,27 +581,25 @@ namespace estd
                 reinterpret_cast<uint8_t*>(start) + n.second.first*sizeof( elem_ptr );
             void* new_end_storage = new_begin_storage;
             for (auto p = begin_elem(); p != end_elem() && new_end_storage <= end; ++p) {
-                new_end_storage = next_aligned_storage( new_end_storage, p->align() );
-                new_end_storage = reinterpret_cast<uint8_t*>(new_end_storage) + p->size();
+                new_end_storage = next_storage_for_object( new_end_storage, p->size(), p->align() );
             }
             // at least one new object should be constructed
-            new_end_storage = next_aligned_storage( new_end_storage, align );
-            new_end_storage = reinterpret_cast<uint8_t*>(new_end_storage) + size;
+            new_end_storage = next_storage_for_object( new_end_storage, size, align );
+            //return with previous alloc descriptor
             if (new_end_storage > end)
                 return n;
-            //re-pivot begin_storage if ther is too much headroom
-            auto new_storage_size = storage_size( new_begin_storage, end );
-            const auto new_avg_obj_size = (this->size()*avg_obj_size() + size + this->size()) /
-                (this->size() + 1);
-            if (new_storage_size / new_avg_obj_size <= n.second.first) {
+            //do not re-pivot begin_storage if ther is not too much headroom
+            if (storage_size( new_begin_storage, end ) / new_avg_obj_size( size ) <= n.second.first) {
                 return std::make_pair( true, std::make_pair( n.second.first, n.second.second ) );
             }
             // estimate excess elem no
-            auto excess_size = storage_size( new_begin_storage + n.second.first*new_avg_obj_size, end );
-            auto excess_elems = (excess_size + (sizeof( elem_ptr ) + new_avg_obj_size) -1) / (sizeof( elem_ptr ) + new_avg_obj_size);
+            auto new_size = n.second.first +
+                estimate_excess( new_begin_storage, end, n, new_avg_obj_size( size ) );
+            // try re-pivot storage
             return validate_layout( start, end, std::make_pair( true,
-                std::make_pair( n.second.first + excess_elems,n.second.second ) ), size, align );
+                std::make_pair( new_size, n.second.second ) ), size, align );
         }
+
         void obtain_storage( my_base&& a, size_t n)
         {
             auto ret = poly_uninitialized_copy(
