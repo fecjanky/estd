@@ -551,23 +551,23 @@ namespace estd
             }
             obtain_storage( std::move( s ), n.second.first );
         }
-        bool can_construct( size_t s, size_t align )
+        bool can_construct( size_t s, size_t align ) noexcept
         {
             auto free = reinterpret_cast<uint8_t*>(next_aligned_storage( _free_storage, align ));
             return free + s <= end_storage();
         }
-        static void* next_storage_for_object( void* s, size_t size, size_t align )
+        static void* next_storage_for_object( void* s, size_t size, size_t align ) noexcept
         {
             s = next_aligned_storage( s, align );
             s = reinterpret_cast<uint8_t*>(s) + size;
             return s;
         }
-        size_t new_avg_obj_size( size_t new_object_size )
+        size_t new_avg_obj_size( size_t new_object_size )const noexcept
         {
             return (this->size()*avg_obj_size() + new_object_size + this->size()) /
                 (this->size() + 1);
         }
-        static size_t estimate_excess( void* s, void* e, alloc_descr_t n, size_t avg )
+        static size_t estimate_excess( void* s, void* e, alloc_descr_t n, size_t avg ) noexcept
         {
             auto es = storage_size( reinterpret_cast<uint8_t*>(s) + n.second.first*avg, e );
             auto en = (es + (sizeof( elem_ptr ) + avg) - 1) / (sizeof( elem_ptr ) + avg);
@@ -595,7 +595,7 @@ namespace estd
             // estimate excess elem no
             auto new_size = n.second.first +
                 estimate_excess( new_begin_storage, end, n, new_avg_obj_size( size ) );
-            // try re-pivot storage
+            // try to re-pivot storage
             return validate_layout( start, end, std::make_pair( true,
                 std::make_pair( new_size, n.second.second ) ), size, align );
         }
@@ -614,15 +614,16 @@ namespace estd
         std::pair<size_type, size_type> calc_increased_storage_size(
             size_t n,size_t curr_elem_size, size_t align ) const noexcept
         {
-            n = n ? n * 2 : size_t(1);
-            const auto s = std::max( curr_elem_size, avg_obj_size() );
+            auto old_n = std::max(size_t(1),n);
+            n = std::max( n * 2, size_t( 1 ) );
+            const auto s = new_avg_obj_size( std::max(curr_elem_size,align) );
             auto begin = reinterpret_cast<uint8_t*>(nullptr);
             const auto first_align = !empty() ? begin_elem()->align() : alignof( std::max_align_t );
             auto end = reinterpret_cast<uint8_t*>(
                 next_aligned_storage( begin + n*sizeof( elem_ptr ), first_align ));
             end += storage_size( _begin_storage, end_storage() );
             end = reinterpret_cast<uint8_t*>(next_aligned_storage( end, align ));
-            end += n*std::max( s, align );
+            end += old_n*s;
             return std::make_pair( n, storage_size( begin, end ) );
         }
 
