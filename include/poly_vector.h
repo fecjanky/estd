@@ -366,7 +366,7 @@ namespace estd
             using TT = std::decay_t<T>;
             constexpr auto s = sizeof( TT );
             constexpr auto a = alignof(TT);
-            if (_free_elem == end_elem() || !can_construct(s,a)) {
+            if ( end_elem() == _begin_storage || !can_construct(s,a)) {
                 increase_storage( s, a );
             }
             auto nas = next_aligned_storage( a );
@@ -428,7 +428,7 @@ namespace estd
         }
         size_type capacity() const noexcept
         {
-            return end_elem() - begin_elem();
+            return storage_size( begin_elem(), _begin_storage ) / sizeof( elem_ptr );
         }
         std::pair<size_t, size_t> capacities() const noexcept
         {
@@ -495,6 +495,7 @@ namespace estd
     private:
         using my_base = allocator_base<Allocator>;
         using elem_ptr = poly_vector_elem_ptr<interface_type, CloningPolicy>;
+        using alloc_descr_t = std::pair<bool, std::pair<size_t, size_t>>;
 
         my_base& base()noexcept
         {
@@ -540,32 +541,48 @@ namespace estd
         }
         void increase_storage( size_t curr_elem_size, size_t align )
         {
-            std::pair<size_type, size_type> n{size(),size_type(0)};
+            alloc_descr_t n{false,std::make_pair(capacity(),size_type(0))};
             my_base s{};
-            do {
-                n = calc_increased_storage_size(n.first,curr_elem_size, align );
-                s = my_base( n.second,
+            while (!n.first) {
+                n.second = calc_increased_storage_size(n.second.first,curr_elem_size, align );
+                s = my_base( n.second.second,
                     allocator_traits::select_on_container_copy_construction( get_allocator_ref() ) );
-            } while (!can_fully_construct_to( s.storage(), s.end_storage(), n.first, curr_elem_size, align ));
-            obtain_storage( std::move( s ), n.first );
+                n = validate_layout( s.storage(), s.end_storage(), n, curr_elem_size, align );
+            }
+            obtain_storage( std::move( s ), n.second.first );
         }
         bool can_construct( size_t s, size_t align )
         {
             auto free = reinterpret_cast<uint8_t*>(next_aligned_storage( _free_storage, align ));
             return free + s <= end_storage();
         }
-        bool can_fully_construct_to( void* start, void* end , size_t n, size_t size,size_t align)
+        alloc_descr_t validate_layout( void* const start, void* const end, const alloc_descr_t n,
+            const size_t size, const size_t align )
         {
-            start = reinterpret_cast<uint8_t*>(start) + n*sizeof( elem_ptr );
-            for (auto p = begin_elem(); p != end_elem() && start <= end; ++p) {
-                start = next_aligned_storage( start,p->align());
-                start = reinterpret_cast<uint8_t*>(start) + p->size();
+            uint8_t* const new_begin_storage =
+                reinterpret_cast<uint8_t*>(start) + n.second.first*sizeof( elem_ptr );
+            void* new_end_storage = new_begin_storage;
+            for (auto p = begin_elem(); p != end_elem() && new_end_storage <= end; ++p) {
+                new_end_storage = next_aligned_storage( new_end_storage, p->align() );
+                new_end_storage = reinterpret_cast<uint8_t*>(new_end_storage) + p->size();
             }
-            // at leaset one new object should be constructed
-            start = next_aligned_storage( start, align );
-            start = reinterpret_cast<uint8_t*>(start) + size;
-            // TODO: re-pivot begin_storage if ther is too much headroom
-            return start <= end;
+            // at least one new object should be constructed
+            new_end_storage = next_aligned_storage( new_end_storage, align );
+            new_end_storage = reinterpret_cast<uint8_t*>(new_end_storage) + size;
+            if (new_end_storage > end)
+                return n;
+            //re-pivot begin_storage if ther is too much headroom
+            auto new_storage_size = storage_size( new_begin_storage, end );
+            const auto new_avg_obj_size = (this->size()*avg_obj_size() + size + this->size()) /
+                (this->size() + 1);
+            if (new_storage_size / new_avg_obj_size <= n.second.first) {
+                return std::make_pair( true, std::make_pair( n.second.first, n.second.second ) );
+            }
+            // estimate excess elem no
+            auto excess_size = storage_size( new_begin_storage + n.second.first*new_avg_obj_size, end );
+            auto excess_elems = (excess_size + (sizeof( elem_ptr ) + new_avg_obj_size) -1) / (sizeof( elem_ptr ) + new_avg_obj_size);
+            return validate_layout( start, end, std::make_pair( true,
+                std::make_pair( n.second.first + excess_elems,n.second.second ) ), size, align );
         }
         void obtain_storage( my_base&& a, size_t n)
         {
