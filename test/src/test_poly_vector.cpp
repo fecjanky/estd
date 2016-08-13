@@ -7,6 +7,40 @@
 #include "poly_vector.h"
 #include "test_poly_vector.h"
 
+#ifdef _MSC_VER
+__declspec(dllexport)
+#endif  // _MSC_VER
+int PullInTestPolyVectorLibrary() { return 0; }
+
+std::atomic<size_t> Interface::last_id = 0;
+
+TEST(poly_vector_basic_tests, default_constructed_poly_vec_is_empty)
+{
+    estd::poly_vector<Interface> v;
+    EXPECT_TRUE(v.empty());
+    EXPECT_EQ(0, v.size());
+    EXPECT_EQ(0, v.sizes().first);
+    EXPECT_EQ(0, v.sizes().second);
+    EXPECT_EQ(0, v.capacity());
+    EXPECT_EQ(0, v.capacities().first);
+    EXPECT_EQ(0, v.capacities().second);
+}
+
+
+TEST(poly_vector_basic_tests, reserve_increases_capacity)
+{
+    estd::poly_vector<Interface> v;
+    constexpr size_t n = 16;
+    constexpr size_t avg_s = 64;
+    v.reserve(n, 64);
+    EXPECT_TRUE(v.empty());
+    EXPECT_EQ(0, v.size());
+    EXPECT_EQ(0, v.sizes().first);
+    EXPECT_EQ(0, v.sizes().second);
+    EXPECT_EQ(n, v.capacity());
+    EXPECT_EQ(n, v.capacities().first);
+    EXPECT_LE(n*avg_s, v.capacities().second);
+}
 
 void test_poly_vector() {
     int a = 0;

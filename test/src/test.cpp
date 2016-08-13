@@ -23,6 +23,7 @@
 #include <vector>
 #include <iostream>
 #include <string>
+#include <scoped_allocator>
 
 #include "memory.h"
 
@@ -93,6 +94,9 @@ using func_3 = void(std::vector<int>&,int);
 using func_4 = std::string(get_name_t);
 using func_5 = void(set_name_t,std::string&&);
 
+template<typename T>
+using UniquePtr = std::unique_ptr<T, std::function<void(T*)>>;
+
 int func() {
     using namespace estd;
     std::vector<int> v{};
@@ -114,11 +118,27 @@ int func() {
     //function_view<func_5>(i)(set_name_t{}, std::move(s));
     sso_storage o;
     o.allocate(4);
+       
+    UniquePtr<std::string> pi;
+
     poly_alloc_impl<std::allocator<uint8_t>> a;
-    std::vector<int, poly_alloc_wrapper<int>> pv(a);
-    pv.push_back(1);
-    auto pv2 = pv;
-    pv2[0] = 5;
+    {
+
+    }
+    poly_alloc_wrapper<double> ad(a);
+    
+    auto pd =  estd::poly_deleter::from(ad);
+
+    constexpr size_t pds = sizeof(pd);
+    auto dd = ad.allocate(1);
+
+    //ad.deallocate(dd, 1);
+    pd(dd);
+    
+    
+    //pv.push_back(1);
+    //auto pv2 = pv;
+    //pv2[0] = 5;
     auto pa = a.clone(a);
     return 0;
 }

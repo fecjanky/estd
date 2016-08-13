@@ -35,10 +35,12 @@
 int PullInTestObjStorageLibrary();
 int PullInTestPolyObjStorageLibrary();
 int PullInTestMemResourceLibrary();
+int PullInTestPolyVectorLibrary();
 
 static int dummyObjStorage = PullInTestObjStorageLibrary();
 static int dummyPolyObjStorage = PullInTestPolyObjStorageLibrary();
 static int dummyMemResource = PullInTestMemResourceLibrary();
+static int dummyPolyVector = PullInTestPolyVectorLibrary();
 
 extern int func();
 extern void test_poly_vector();
