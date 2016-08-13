@@ -11,7 +11,7 @@
 void test_poly_vector() {
     int a = 0;
     {
-        estd::poly_vector<Interface> v;
+        estd::poly_vector<Interface> v,v2;
         estd::poly_vector<Interface,std::allocator<Interface>, estd::delegate_cloning_policy<Interface> > vdcp;
         v.push_back( Impl1{ 3.14 } );
         v.push_back( Impl1{ 6.28 } );
@@ -20,6 +20,8 @@ void test_poly_vector() {
         v.push_back( Impl1{ 6.28 } );
         v.push_back( Impl2{} );
         
+        v2 = v;
+
         vdcp.push_back( Impl1{ 3.14 } );
         vdcp.push_back( Impl2{} );
 
@@ -32,7 +34,7 @@ void test_poly_vector() {
             int a = 0;
             i.function();
         }
-        auto v2 = v;
+        auto v3 = v;
         v[0].function();
         v.pop_back();
         v.back().function();
