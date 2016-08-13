@@ -561,7 +561,7 @@ namespace estd
         void reserve( size_type n ,size_type avg_size = avg_obj_size())
         {
             constexpr size_t default_avg_size = 4 * sizeof(void*);
-            if (n < size()) return;
+            if (n < capacity()) return;
             if (n > max_size())throw std::length_error( "poly_vector reserve size too big" );
             // TODO: check if aligment criteria holds
             auto size = n*((avg_size ? avg_size : default_avg_size) + sizeof(elem_ptr));
