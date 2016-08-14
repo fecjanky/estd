@@ -62,59 +62,149 @@ TEST(poly_vector_basic_tests, descendants_of_interface_can_be_pushed_back_into_t
 }
 
 
-class poly_vector_modifier_test : public ::testing::Test {
+template<class CloningPolicy>
+class poly_vector_modifiers_test : public ::testing::Test {
 public:
-    poly_vector_modifier_test() {
+    using vector = estd::poly_vector<Interface, std::allocator<Interface>, CloningPolicy>;
+
+    poly_vector_modifiers_test() {
         v.push_back(obj1);
         v.push_back(obj2);
     }
 protected:
     Impl1 obj1;
-    Impl2 obj2;
-    estd::poly_vector<Interface> v;
+    Impl2T<CloningPolicy> obj2;
+    vector v;
 };
 
-TEST_F(poly_vector_modifier_test, back_accesses_the_last_element)
+TYPED_TEST_CASE_P(poly_vector_modifiers_test);
+
+using CloneTypes = ::testing::Types<
+    estd::delegate_cloning_policy<Interface>,
+    estd::delegate_cloning_policy<Interface>
+>;
+
+TYPED_TEST_P(poly_vector_modifiers_test, back_accesses_the_last_element)
 {
     Interface& obj = this->obj2;
-    EXPECT_EQ(obj ,v.back());
+    EXPECT_EQ(obj , this->v.back());
 }
 
-TEST_F(poly_vector_modifier_test, front_accesses_the_first_element)
+TYPED_TEST_P(poly_vector_modifiers_test, front_accesses_the_first_element)
 {
     Interface& obj = this->obj1;
-    EXPECT_EQ(obj, v.front());
+    EXPECT_EQ(obj, this->v.front());
 }
 
-TEST_F(poly_vector_modifier_test, pop_back_removes_the_last_element)
+TYPED_TEST_P(poly_vector_modifiers_test, pop_back_removes_the_last_element)
 {
     Interface& obj1 = this->obj1;
     Interface& obj2 = this->obj2;
-    EXPECT_EQ(obj2, v.back());
-    v.pop_back();
-    EXPECT_EQ(obj1, v.back());
+    EXPECT_EQ(obj2, this->v.back());
+    
+    this->v.pop_back();
+    
+    EXPECT_EQ(obj1, this->v.back());
 }
 
-TEST_F(poly_vector_modifier_test, pop_back_keeps_capacity_but_adjustes_size)
+TYPED_TEST_P(poly_vector_modifiers_test, pop_back_keeps_capacity_but_adjustes_size)
 {
-    auto cap = v.capacities();
-    v.pop_back();
-    v.pop_back();
-    EXPECT_EQ(cap, v.capacities());
-    EXPECT_TRUE(v.empty());
-    EXPECT_EQ(std::make_pair(size_t(0),size_t(0)),v.sizes());
+    auto cap = this->v.capacities();
+    
+    this->v.pop_back();
+    this->v.pop_back();
+    
+    EXPECT_EQ(cap, this->v.capacities());
+    EXPECT_TRUE(this->v.empty());
+    EXPECT_EQ(std::make_pair(size_t(0),size_t(0)), this->v.sizes());
 }
 
-TEST_F(poly_vector_modifier_test, clear_destroys_all_elements_but_keeps_capacity)
+TYPED_TEST_P(poly_vector_modifiers_test, clear_destroys_all_elements_but_keeps_capacity)
 {
-    v.push_back(Impl2{});
-    v.push_back(Impl1{6.28});
-    auto cap = v.capacities();
-    v.clear();
-    EXPECT_EQ(cap, v.capacities());
-    EXPECT_TRUE(v.empty());
-    EXPECT_EQ(std::make_pair(size_t(0), size_t(0)), v.sizes());
+    using Impl2 = Impl2T<TypeParam>;
+    this->v.push_back(Impl2{});
+    this->v.push_back(Impl1{6.28});
+    auto cap = this->v.capacities();
+    
+    this->v.clear();
+    
+    EXPECT_EQ(cap, this->v.capacities());
+    EXPECT_TRUE(this->v.empty());
+    EXPECT_EQ(std::make_pair(size_t(0), size_t(0)), this->v.sizes());
 }
+
+TYPED_TEST_P(poly_vector_modifiers_test, at_operator_retrieves_nth_elem)
+{
+    EXPECT_EQ(static_cast<Interface&>(this->obj1), this->v[0]);
+    EXPECT_EQ(static_cast<Interface&>(this->obj2), this->v[1]);
+}
+
+TYPED_TEST_P(poly_vector_modifiers_test, at_operator_throws_out_of_range_error_on_overindexing)
+{
+    EXPECT_NO_THROW(this->v.at(1));
+    EXPECT_THROW(this->v.at(2), std::out_of_range);
+}
+
+TYPED_TEST_P(poly_vector_modifiers_test, swap_swaps_the_contents_of_two_vectors)
+{
+    using Impl2 = Impl2T<TypeParam>;
+    using vector = typename poly_vector_modifiers_test<TypeParam>::vector;
+    vector v2;
+    Impl1 obj1{ 6.28 };
+    Impl2 obj2{};
+    v2.push_back(obj1);
+    v2.push_back(obj2);
+    
+    this->v.swap(v2);
+    
+    EXPECT_EQ(static_cast<Interface&>(obj1),this->v[0]);
+    EXPECT_EQ(static_cast<Interface&>(obj2), this->v[1]);
+    EXPECT_EQ(static_cast<Interface&>(this->obj1), v2[0]);
+    EXPECT_EQ(static_cast<Interface&>(this->obj2), v2[1]);
+
+}
+
+TYPED_TEST_P(poly_vector_modifiers_test, copy_assignment_copies_contained_elems)
+{
+    using vector = typename poly_vector_modifiers_test<TypeParam>::vector;
+    vector v2;
+
+    v2 = this->v;
+
+    EXPECT_EQ(static_cast<Interface&>(this->obj1), v2[0]);
+    EXPECT_EQ(static_cast<Interface&>(this->obj2), v2[1]);
+}
+
+TYPED_TEST_P(poly_vector_modifiers_test, move_assignment_moves_contained_elems)
+{
+    using vector = typename poly_vector_modifiers_test<TypeParam>::vector;
+    vector v2;
+    auto size = v2.sizes();
+    auto capacities = v2.capacities();
+
+    v2 = std::move(this->v);
+
+    EXPECT_EQ(static_cast<Interface&>(this->obj1), v2[0]);
+    EXPECT_EQ(static_cast<Interface&>(this->obj2), v2[1]);
+    EXPECT_EQ(size, this->v.sizes());
+    EXPECT_EQ(capacities, this->v.capacities());
+
+}
+
+REGISTER_TYPED_TEST_CASE_P(poly_vector_modifiers_test,
+    back_accesses_the_last_element, 
+    front_accesses_the_first_element,
+    pop_back_removes_the_last_element,
+    pop_back_keeps_capacity_but_adjustes_size,
+    clear_destroys_all_elements_but_keeps_capacity,
+    at_operator_retrieves_nth_elem,
+    at_operator_throws_out_of_range_error_on_overindexing,
+    swap_swaps_the_contents_of_two_vectors,
+    copy_assignment_copies_contained_elems,
+    move_assignment_moves_contained_elems
+);
+
+INSTANTIATE_TYPED_TEST_CASE_P(poly_vector, poly_vector_modifiers_test, CloneTypes);
 
 void test_poly_vector() {
     int a = 0;

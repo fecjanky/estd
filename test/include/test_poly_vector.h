@@ -21,6 +21,10 @@ struct Interface
     {
         return my_id == rhs.my_id;
     }
+    bool operator!=(const Interface& rhs)const noexcept
+    {
+        return my_id != rhs.my_id;
+    }
 private:
     size_t my_id;
     static std::atomic<size_t> last_id;
@@ -30,7 +34,7 @@ class Impl1 : public Interface
 {
 public:
     Impl1( double dd = 0.0 ) : d{ dd } {}
-    Impl1(const Impl1& i) : Interface(i) {}
+    Impl1(const Impl1& i) : Interface(i), d{ i.d } {}
     Impl1(Impl1&& o)noexcept : Interface(std::move(o)), d{ o.d } {}
 
     void function() override
@@ -49,26 +53,28 @@ private:
     double d;
 };
 
-class Impl2 : public Interface
+template<typename cloningp>
+class Impl2T : public Interface
 {
 public:
-    Impl2() {}
-    Impl2( const Impl2& ) = default;
-    Impl2( Impl2&& o )noexcept : v{ std::move( o.v ) } {}
+    Impl2T() {}
+    Impl2T( const Impl2T& ) = default;
+    Impl2T(Impl2T&& o )noexcept : v{ std::move( o.v ) } {}
     void function() override
     {
         v.push_back( Impl1{ 3.1 } );
     }
     virtual Interface* clone( void* dest )
     {
-        return new (dest) Impl2( *this );
+        return new (dest) Impl2T( *this );
     }
     virtual Interface* move( void* dest )
     {
-        return new (dest) Impl2( std::move( *this ) );
+        return new (dest) Impl2T( std::move( *this ) );
     }
 
 private:
-    estd::poly_vector<Interface> v;
+    estd::poly_vector<Interface,std::allocator<Interface>, cloningp> v;
 };
 
+using Impl2 = Impl2T<estd::virtual_cloning_policy<Interface>>;
