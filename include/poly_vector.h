@@ -449,7 +449,8 @@ namespace estd
         // Ctors,Dtors & assignment
         ///////////////////////////////////////////////
         poly_vector() : _free_elem{}, _begin_storage{}, _free_storage{} {}
-        explicit poly_vector(const allocator_type& alloc) : my_base(alloc), poly_vector() {};
+        explicit poly_vector(const allocator_type& alloc) : allocator_base<allocator_type>(alloc),
+            _free_elem{}, _begin_storage{}, _free_storage{} {};
         poly_vector(const poly_vector& other) : allocator_base<allocator_type>(other.base()),
             _free_elem{ begin_elem() }, _begin_storage{ begin_elem() + other.size() },
             _free_storage{ _begin_storage }
@@ -468,25 +469,17 @@ namespace estd
         }
         poly_vector& operator=(const poly_vector& rhs)
         {
-            if (this == &rhs || rhs.empty()) {
-                if (this != &rhs) {
-                    tidy();
-                    base() = rhs.base();
-                }
-                return *this;
+            if (this != &rhs) {
+                return copy_assign_impl(rhs);
             }
-            return copy_assign_impl(rhs);
+            return *this;
         }
         poly_vector& operator=(poly_vector&& rhs) noexcept(move_is_noexcept_t::value)
         {
-            if (this == &rhs || rhs.empty()) {
-                if (this != &rhs) {
-                    tidy();
-                    base() = std::move(rhs.base());
-                }
-                return *this;
+            if (this != &rhs ) {
+                return move_assign_impl(std::move(rhs), move_is_noexcept_t{});
             }
-            return move_assign_impl(std::move(rhs), move_is_noexcept_t{});
+            return *this;
         }
         ///////////////////////////////////////////////
         // Modifiers
@@ -499,13 +492,10 @@ namespace estd
             constexpr auto s = sizeof(TT);
             constexpr auto a = alignof(TT);
             if (end_elem() == _begin_storage || !can_construct_new_elem(s, a)) {
-                increase_storage(*this, *this, std::max(size() * 2, size_t(1)), s, a);
+                push_back_new_elem_w_storage_increase(std::forward<T>(obj));
+            } else {
+                push_back_new_elem(std::forward<T>(obj));
             }
-            auto nas = next_aligned_storage(a);
-            _free_elem = new (_free_elem) elem_ptr(std::forward<T>(obj),
-                nas, new (nas) TT(std::forward<T>(obj)));
-            _free_storage = reinterpret_cast<uint8_t*>(_free_elem->ptr.first) + s;
-            ++_free_elem;
         }
         void pop_back()noexcept
         {
@@ -692,8 +682,7 @@ namespace estd
             my_base s{};
             while (!n.first) {
                 n.second = src.calc_increased_storage_size(n.second.first, curr_elem_size, align);
-                s = my_base(n.second.second,
-                    allocator_traits::select_on_container_copy_construction(dst.get_allocator_ref()));
+                s = my_base(n.second.second,dst.get_allocator_ref());
                 n = src.validate_layout(s.storage(), s.end_storage(), n, curr_elem_size, align);
                 if (!n.first) n.second.first *= 2;
             }
@@ -826,6 +815,7 @@ namespace estd
             else {
                 base().get_allocator_ref() = std::move(rhs.base().get_allocator_ref());
             }
+            // TODO: move if invoked from move assignment
             increase_storage(rhs, *this, rhs.size(), 0, 1);
             return *this;
         }
@@ -850,6 +840,32 @@ namespace estd
             swap(_free_elem, rhs._free_elem);
             swap(_begin_storage, rhs._begin_storage);
             swap(_free_storage, rhs._free_storage);
+        }
+        template<class T>
+        void push_back_new_elem(T&& obj)
+        {
+            using TT = std::decay_t<T>;
+            constexpr auto s = sizeof(TT);
+            constexpr auto a = alignof(TT);
+            auto nas = next_aligned_storage(a);
+            _free_elem = new (_free_elem) elem_ptr(std::forward<T>(obj),
+                nas, new (nas) TT(std::forward<T>(obj)));
+            _free_storage = reinterpret_cast<uint8_t*>(_free_elem->ptr.first) + s;
+            ++_free_elem;
+        }
+        template<class T>
+        void push_back_new_elem_w_storage_increase(T&& obj)
+        {
+            using TT = std::decay_t<T>;
+            constexpr auto s = sizeof(TT);
+            constexpr auto a = alignof(TT);
+            poly_vector v(base().get_allocator_ref());
+            auto new_size = std::max(size() * 2, size_t(1));
+            v.reserve(new_size, new_avg_obj_size(s, a));
+            // TODO: move if noexcept
+            v.set_ptrs(poly_uninitialized_copy(v.begin_elem(), new_size));
+            v.push_back(std::forward<T>(obj));
+            this->swap(v);
         }
         bool can_construct_new_elem(size_t s, size_t align) noexcept
         {
