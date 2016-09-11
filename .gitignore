@@ -1,5 +1,6 @@
 /Release/
 /Debug/
+/estd/Debug/
 .cproject
 .project
 /estd/estd.VC.opendb
