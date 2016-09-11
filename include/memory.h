@@ -195,7 +195,7 @@ static inline void* aligned_heap_addr(void* ptr,size_t alignment) noexcept
 
 template<
     size_t storage_size = 4, // in pointer size
-    size_t alignment_ = alignof(max_align_t),
+    size_t alignment_ = alignof(std::max_align_t),
     class Allocator = ::std::allocator<uint8_t>
 >
 class sso_storage_t: private Allocator {
@@ -579,7 +579,7 @@ template<
     class IF,
     typename CloningPolicy = impl::DefaultCloningPolicy,
     size_t storage_size = 4,  // in pointer size
-    size_t alignment = alignof(max_align_t),
+    size_t alignment = alignof(std::max_align_t),
     class Allocator = ::std::allocator<uint8_t>
 >
 class polymorphic_obj_storage_t {
