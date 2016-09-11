@@ -41,11 +41,11 @@ public:
     {
         d += 1.0;
     }
-    virtual Interface* clone( void* dest )
+    virtual Interface* clone( void* dest ) override
     {
         return new (dest) Impl1( *this );
     }
-    virtual Interface* move( void* dest )
+    virtual Interface* move( void* dest ) override
     {
         return new (dest) Impl1( std::move( *this ) );
     }
@@ -64,11 +64,11 @@ public:
     {
         v.push_back( Impl1{ 3.1 } );
     }
-    virtual Interface* clone( void* dest )
+    virtual Interface* clone( void* dest ) override
     {
         return new (dest) Impl2T( *this );
     }
-    virtual Interface* move( void* dest )
+    virtual Interface* move( void* dest ) override
     {
         return new (dest) Impl2T( std::move( *this ) );
     }

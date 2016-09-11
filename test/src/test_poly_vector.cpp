@@ -12,7 +12,7 @@ __declspec(dllexport)
 #endif  // _MSC_VER
 int PullInTestPolyVectorLibrary() { return 0; }
 
-std::atomic<size_t> Interface::last_id = 0;
+std::atomic<size_t> Interface::last_id {0};
 
 TEST(poly_vector_basic_tests, default_constructed_poly_vec_is_empty)
 {

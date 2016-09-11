@@ -221,7 +221,7 @@ namespace estd
     {
         using size_func_t = std::pair<size_t, size_t>();
         using policy_t = CloningPolicy;
-        poly_vector_elem_ptr() : size{}, sf{} {}
+        poly_vector_elem_ptr() : ptr{}, sf{} {}
         template<typename T, typename = std::enable_if_t< std::is_base_of< IF, std::decay_t<T> >::value > >
         explicit poly_vector_elem_ptr(T&& t, void* s = nullptr, IF* i = nullptr) noexcept :
             CloningPolicy(std::forward<T>(t)), ptr{ s, i }, sf{ &size_func<std::decay_t<T>> }
@@ -290,7 +290,7 @@ namespace estd
     {
         struct exception : public std::exception
         {
-            const char* const what() const noexcept override
+            const char* what() const noexcept override
             {
                 return "cloning attempt with no_cloning_policy";
             }
@@ -446,7 +446,7 @@ namespace estd
         using interface_reference = interface_type&;
         using const_interface_reference = const interface_type&;
         using allocator_type = typename std::allocator_traits<Allocator>::template rebind_alloc<uint8_t>;
-        using allocator_traits = typename allocator_base::allocator_traits;
+        using allocator_traits = std::allocator_traits<allocator_type>;
         using void_ptr = void*;
         using size_type = std::size_t;
         using iterator = poly_vector_iterator<interface_type, CloningPolicy>;
@@ -589,7 +589,7 @@ namespace estd
         }
         std::pair<size_t, size_t> capacities() const noexcept
         {
-            return std::make_pair(capacity(), storage_size(_begin_storage, _end_storage));
+            return std::make_pair(capacity(), storage_size(_begin_storage, this->_end_storage));
         }
         bool empty() const noexcept
         {
@@ -598,16 +598,18 @@ namespace estd
         size_type max_size() const noexcept
         {
             auto avg = avg_obj_size() ? avg_obj_size() : 4 * sizeof(void_ptr);
-            return allocator_traits::max_size(get_allocator_ref()) /
+            return allocator_traits::max_size(this->get_allocator_ref()) /
                 (sizeof(elem_ptr) + avg);
         }
-        void reserve(size_type n, size_type avg_size = avg_obj_size())
+
+        void reserve(size_type n, size_type avg_size)
         {
-            constexpr size_t default_avg_size = 4 * sizeof(void*);
             if (n < capacity()) return;
             if (n > max_size())throw std::length_error("poly_vector reserve size too big");
-            auto avg_s = avg_size ? avg_size : default_avg_size;
-            increase_storage(*this, *this, n, avg_s, alignof(std::max_align_t), select_copy_method());
+            increase_storage(*this, *this, n, avg_size, alignof(std::max_align_t), select_copy_method());
+        }
+        void reserve(size_type n){
+            reserve(n,default_avg_size);
         }
         void reserve(std::pair<size_t, size_t> s)
         {
@@ -664,6 +666,7 @@ namespace estd
         using alloc_descr_t = std::pair<bool, std::pair<size_t, size_t>>;
         using poly_copy_descr = std::tuple<elem_ptr*, elem_ptr*, void*>;
         typedef poly_copy_descr(poly_vector::*copy_mem_fun)(elem_ptr*, size_t) const;
+        using noexcept_moveable = typename elem_ptr::policy_t::noexcept_moveable;
 
         static alloc_descr_t make_alloc_descr(bool b, size_t size, size_t align)noexcept
         {
@@ -722,7 +725,7 @@ namespace estd
         }
 
         static copy_mem_fun select_copy_method() {
-            if (typename CloningPolicy::noexcept_moveable::value) {
+            if (noexcept_moveable::value) {
                 return &poly_vector::poly_uninitialized_move;
             }
             else {
@@ -743,11 +746,11 @@ namespace estd
             size_t desired_size, size_t curr_elem_size, size_t align) const noexcept
         {
             const auto s = new_avg_obj_size(std::max(curr_elem_size, align), align);
-            auto begin = reinterpret_cast<uint8_t*>(nullptr);
+            auto begin = static_cast<uint8_t*>(nullptr);
             const auto first_align = !empty() ? begin_elem()->align() : size_t(1);
             auto end = reinterpret_cast<uint8_t*>(
                 next_aligned_storage(begin + desired_size * sizeof(elem_ptr), first_align));
-            end += storage_size(_begin_storage, end_storage());
+            end += storage_size(_begin_storage, this->end_storage());
             end = reinterpret_cast<uint8_t*>(next_aligned_storage(end, align));
             end += (desired_size - size())*s;
             return std::make_pair(desired_size, storage_size(begin, end));
@@ -783,16 +786,16 @@ namespace estd
         poly_copy_descr poly_uninitialized_copy(elem_ptr* dst, size_t n) const
         {
             return poly_uninitialized(dst, n,
-                [](const elem_ptr* e, elem_ptr* d)->Interface* {
+                [](const elem_ptr* e, elem_ptr* d) -> interface_ptr {
                 return e->policy().clone(e->ptr.second, d->ptr.first);
             });
         }
 
         poly_copy_descr poly_uninitialized_move(elem_ptr* dst, size_t n) const
-            noexcept(typename elem_ptr::policy_t::noexcept_moveable::value)
+            noexcept(noexcept_moveable::value)
         {
             return poly_uninitialized(dst, n,
-                [](const elem_ptr* e, elem_ptr* d)->Interface* {
+                [](const elem_ptr* e, elem_ptr* d) -> interface_ptr {
                 return e->policy().move(e->ptr.second, d->ptr.first);
             });
         }
@@ -933,7 +936,7 @@ namespace estd
         bool can_construct_new_elem(size_t s, size_t align) noexcept
         {
             auto free = reinterpret_cast<uint8_t*>(next_aligned_storage(_free_storage, align));
-            return free + s <= end_storage();
+            return free + s <= this->end_storage();
         }
         void_ptr next_aligned_storage(size_t align) const noexcept
         {
@@ -954,7 +957,7 @@ namespace estd
         }
         elem_ptr* begin_elem()noexcept
         {
-            return reinterpret_cast<elem_ptr*>(storage());
+            return reinterpret_cast<elem_ptr*>(this->storage());
         }
         elem_ptr* end_elem()noexcept
         {
@@ -962,7 +965,7 @@ namespace estd
         }
         const elem_ptr* begin_elem()const noexcept
         {
-            return reinterpret_cast<const elem_ptr*>(storage());
+            return reinterpret_cast<const elem_ptr*>(this->storage());
         }
         const elem_ptr* end_elem()const noexcept
         {
