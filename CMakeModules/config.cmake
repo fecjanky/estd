@@ -22,10 +22,11 @@ if(UNIX)
             CMAKE_EXE_LINKER_FLAGS_COVERAGE
             CMAKE_SHARED_LINKER_FLAGS_COVERAGE)
 
-    SET( CMAKE_CXX_FLAGS_SANITIZE "${CMAKE_CXX_FLAGS_RELEASE} -g -fsanitize=address -fsanitize-address-use-after-scope -fno-omit-frame-pointer -O1 -fno-optimize-sibling-calls"
+    #-fsanitize-address-use-after-scope
+    SET( CMAKE_CXX_FLAGS_SANITIZE "${CMAKE_CXX_FLAGS_RELEASE} -g -fsanitize=address -fno-omit-frame-pointer -O1 -fno-optimize-sibling-calls"
             CACHE STRING "Flags used by the C++ compiler during coverage builds."
             FORCE )
-    SET( CMAKE_C_FLAGS_SANITIZE "${CMAKE_C_FLAGS_RELEASE} -g -fsanitize=address -fsanitize-address-use-after-scope -fno-omit-frame-pointer -O1 -fno-optimize-sibling-calls" CACHE STRING
+    SET( CMAKE_C_FLAGS_SANITIZE "${CMAKE_C_FLAGS_RELEASE} -g -fsanitize=address -fno-omit-frame-pointer -O1 -fno-optimize-sibling-calls" CACHE STRING
             "Flags used by the C compiler during coverage builds."
             FORCE )
     SET( CMAKE_EXE_LINKER_FLAGS_SANITIZE
