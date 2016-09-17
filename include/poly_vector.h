@@ -609,7 +609,8 @@ namespace estd
         {
             if (n <= capacities().first && avg_size <= capacities().second) return;
             if (n > max_size())throw std::length_error("poly_vector reserve size too big");
-            increase_storage(*this, *this, n, avg_size, alignof(std::max_align_t), select_copy_method());
+            increase_storage(*this, *this, n, avg_size, alignof(std::max_align_t),
+                             select_copy_method(noexcept_moveable{}));
         }
         void reserve(size_type n){
             reserve(n,default_avg_size);
@@ -728,13 +729,12 @@ namespace estd
             dst.set_ptrs(ret);
         }
 
-        static copy_mem_fun select_copy_method() {
-            if (noexcept_moveable::value) {
-                return &poly_vector::poly_uninitialized_move;
-            }
-            else {
-                return &poly_vector::poly_uninitialized_copy;
-            }
+        static copy_mem_fun select_copy_method(std::true_type) {
+            return &poly_vector::poly_uninitialized_move;
+        }
+
+        static copy_mem_fun select_copy_method(std::false_type) {
+            return &poly_vector::poly_uninitialized_copy;
         }
 
         my_base& base()noexcept
