@@ -4,11 +4,11 @@ addons:
   apt:
     sources:
         - ubuntu-toolchain-r-test
-        - llvm-toolchain-precise-3.9
+        - llvm-toolchain-precise-3.8
     packages:
         - g++-5
         - gcc-5
-        - clang-3.9
+        - clang-3.8
 
 matrix:
   include:
@@ -24,8 +24,8 @@ matrix:
 
     - compiler: clang
       env:
-        - CC_USED=clang-3.9
-        - CXX_USED=clang++-3.9
+        - CC_USED=clang-3.8
+        - CXX_USED=clang++-3.8
 
 before_install:
   - wget --no-check-certificate https://cmake.org/files/v3.4/cmake-3.4.0-Linux-x86_64.tar.gz 
