@@ -26,6 +26,8 @@ matrix:
       env:
         - CC_USED=clang-3.8
         - CXX_USED=clang++-3.8
+        - CMAKE_FLAGS="-DCMAKE_BUILD_TYPE=SANITIZE"
+        - ASAN_OPTIONS="check_initialization_order=1:detect_stack_use_after_return=1"
 
 before_install:
   - wget --no-check-certificate https://cmake.org/files/v3.4/cmake-3.4.0-Linux-x86_64.tar.gz 
@@ -40,5 +42,6 @@ before_script:
   - export CC=$CC_USED
   - export CXX=$CXX_USED
   - cmake ../ $CMAKE_FLAGS
+
 script:
   - CTEST_OUTPUT_ON_FAILURE=TRUE make all test

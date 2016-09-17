@@ -139,6 +139,6 @@ int func() {
     //pv.push_back(1);
     //auto pv2 = pv;
     //pv2[0] = 5;
-    auto pa = a.clone(a);
+    std::unique_ptr<poly_alloc_t> pa {a.clone(a)};
     return 0;
 }
