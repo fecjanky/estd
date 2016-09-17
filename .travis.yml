@@ -37,8 +37,8 @@ before_script:
   - git submodule update
   - mkdir build
   - cd build
-  - cmake ../ $CMAKE_FLAGS
-script:
   - export CC=$CC_USED
   - export CXX=$CXX_USED
+  - cmake ../ $CMAKE_FLAGS
+script:
   - CTEST_OUTPUT_ON_FAILURE=TRUE make all test
