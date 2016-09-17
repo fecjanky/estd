@@ -866,9 +866,7 @@ namespace estd
 
         void tidy() noexcept
         {
-            for (auto src = begin_elem(); src != _free_elem; ++src) {
-                src->ptr.second->~IF();
-            }
+            clear();
             _begin_storage = _free_storage = _free_elem = nullptr;
             my_base::tidy();
         }
