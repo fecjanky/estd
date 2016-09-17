@@ -1,17 +1,21 @@
 language: cpp
 
+addons:
+  apt:
+    sources:
+        - ubuntu-toolchain-r-test
+        - llvm-toolchain-precise-3.9
+    packages:
+        - g++-5
+        - gcc-5
+        - clang-3.9
+
 matrix:
   include:
     - compiler: gcc
-      addons:
-          apt:
-              sources:
-                  - ubuntu-toolchain-r-test
-              packages:
-                  - g++-5
-                  - gcc-5
       env:
-        - COMPILER=g++-5
+        - CC_USED=gcc-5
+        - CXX_USED=g++-5
         - CMAKE_FLAGS="-DCMAKE_BUILD_TYPE=COVERAGE"
       install:
         - pip install --user cpp-coveralls
@@ -19,15 +23,9 @@ matrix:
         - coveralls --include include --gcov-options '\-lp' --root .. --build-root .
 
     - compiler: clang
-      addons:
-          apt:
-              sources:
-                  - ubuntu-toolchain-r-test
-                  - llvm-toolchain-precise-3.7
-              packages:
-                  - clang-3.7
       env:
-        - COMPILER=clang++-3.7
+        - CC_USED=clang-3.9
+        - CXX_USED=clang++-3.9
 
 before_install:
   - wget --no-check-certificate https://cmake.org/files/v3.4/cmake-3.4.0-Linux-x86_64.tar.gz 
@@ -41,4 +39,6 @@ before_script:
   - cd build
   - cmake ../ $CMAKE_FLAGS
 script:
+  - export CC=$CC_USED
+  - export CXX=$CXX_USED
   - CTEST_OUTPUT_ON_FAILURE=TRUE make all test
