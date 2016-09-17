@@ -463,12 +463,15 @@ namespace estd
         // Ctors,Dtors & assignment
         ///////////////////////////////////////////////
         poly_vector() : _free_elem{}, _begin_storage{}, _free_storage{} {}
+
         explicit poly_vector(const allocator_type& alloc) : allocator_base<allocator_type>(alloc),
             _free_elem{}, _begin_storage{}, _free_storage{} {};
+
         poly_vector(const poly_vector& other) : allocator_base<allocator_type>(other.base()),
-            _free_elem{ begin_elem() }, _begin_storage{ begin_elem() + other.size() },
+            _free_elem{ begin_elem() }, _begin_storage{ begin_elem() + other.capacity() },
             _free_storage{ _begin_storage }
         {
+            resize_to_fit(other,other.size());
             set_ptrs(other.poly_uninitialized_copy(begin_elem(), other.size()));
         }
         poly_vector(poly_vector&& other) : allocator_base<allocator_type>(std::move(other.base())),
@@ -604,7 +607,7 @@ namespace estd
 
         void reserve(size_type n, size_type avg_size)
         {
-            if (n < capacity()) return;
+            if (n <= capacities().first && avg_size <= capacities().second) return;
             if (n > max_size())throw std::length_error("poly_vector reserve size too big");
             increase_storage(*this, *this, n, avg_size, alignof(std::max_align_t), select_copy_method());
         }
@@ -704,6 +707,7 @@ namespace estd
             copy_mem_fun func = &poly_vector::poly_uninitialized_copy)
         {
             alloc_descr_t n{ false,std::make_pair(desired_size,size_type(0)) };
+
             my_base s{};
             while (!n.first) {
                 n.second = src.calc_increased_storage_size(n.second.first, curr_elem_size, align);
@@ -912,13 +916,9 @@ namespace estd
             >;
             //////////////////////////////////////////
             poly_vector v(base().get_allocator_ref());
-            auto new_size = std::max(size() * 2, size_t(1));
-            alloc_descr_t n{ false,std::make_pair(new_size,size_type(0)) };
-            while (!n.first) {
-                v.reserve(n.second.first, new_avg_obj_size(s, a));
-                n = validate_layout(v.storage(), v.end_storage(), n, s, a);
-                if (!n.first) n.second.first *= 2;
-            }
+            const auto newsize = std::max(size() * 2, size_t(1));
+            v.reserve(newsize, new_avg_obj_size(s, a));
+            v.resize_to_fit(*this, newsize, s, a);
             // move if rvalue ref and cloning policy move is noexcept
             push_back_new_elem_w_storage_increase_copy(v, select{});
             v.push_back_new_elem(std::forward<T>(obj));
@@ -932,6 +932,16 @@ namespace estd
             v.set_ptrs(poly_uninitialized_copy(v.begin_elem(), v.capacity()));
         }
 
+        void resize_to_fit(const poly_vector& v,std::size_t new_size,std::size_t size = 0,std::size_t alignment = 1){
+            alloc_descr_t n{ false,std::make_pair(new_size,size_type(0)) };
+            while (!n.first) {
+                n = v.validate_layout(this->storage(), this->end_storage(), n, size, alignment);
+                if (!n.first) {
+                    this->reserve(n.second.first*2,v.new_avg_obj_size(size,alignment));
+                    n.second.first = this->capacity();
+                }
+            }
+        }
 
         bool can_construct_new_elem(size_t s, size_t align) noexcept
         {

@@ -1,4 +1,5 @@
 /Release/
+/.idea/
 /Debug/
 /estd/Debug/
 .cproject

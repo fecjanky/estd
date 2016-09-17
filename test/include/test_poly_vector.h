@@ -1,6 +1,7 @@
 #pragma once
 #include "poly_vector.h"
 #include <atomic>
+#include <memory>
 
 struct Interface
 {
@@ -34,8 +35,8 @@ class Impl1 : public Interface
 {
 public:
     Impl1( double dd = 0.0 ) : d{ dd } {}
-    Impl1(const Impl1& i) : Interface(i), d{ i.d } {}
-    Impl1(Impl1&& o)noexcept : Interface(std::move(o)), d{ o.d } {}
+    Impl1(const Impl1& i) : Interface(i), d{ i.d },p{new int[111]} {}
+    Impl1(Impl1&& o)noexcept : Interface(std::move(o)), d{ o.d },p{new int[111]} {}
 
     void function() override
     {
@@ -51,15 +52,17 @@ public:
     }
 private:
     double d;
+    std::unique_ptr<int[]> p;
 };
 
 template<typename cloningp>
-class Impl2T : public Interface
+class alignas(alignof(std::max_align_t)*4) Impl2T : public Interface
 {
 public:
-    Impl2T() {}
-    Impl2T( const Impl2T& ) = default;
-    Impl2T(Impl2T&& o )noexcept : v{ std::move( o.v ) } {}
+    Impl2T() : p{new double[137]}{}
+    Impl2T( const Impl2T& o) : Interface(o),p{new double[137]} {
+    }
+    Impl2T(Impl2T&& o )noexcept : v{ std::move( o.v ) } , p{std::move(o.p)}{}
     void function() override
     {
         v.push_back( Impl1{ 3.1 } );
@@ -75,6 +78,7 @@ public:
 
 private:
     estd::poly_vector<Interface,std::allocator<Interface>, cloningp> v;
+    std::unique_ptr<double[]> p;
 };
 
 using Impl2 = Impl2T<estd::virtual_cloning_policy<Interface>>;
