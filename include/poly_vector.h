@@ -211,7 +211,7 @@ namespace estd
             return _end_storage;
         }
         template<typename T>
-        void destroy(T* obj){
+        void destroy(T* obj) const{
             using traits = typename allocator_traits::template rebind_traits <T>;
             typename traits::allocator_type a(get_allocator_ref());
             traits::destroy(a,obj);
@@ -237,7 +237,7 @@ namespace estd
 
         template<typename T, typename = std::enable_if_t< std::is_base_of< IF, std::decay_t<T> >::value > >
         explicit poly_vector_elem_ptr(T&& t, void* s = nullptr, IF* i = nullptr) noexcept :
-            CloningPolicy(std::forward<T>(t)), ptr{ s, i }, sf{ &size_func<std::decay_t<T>> }
+            CloningPolicy(std::forward<T>(t)), ptr{ s, i }, sf{ &poly_vector_elem_ptr::size_func<std::decay_t<T>>}
         {}
         poly_vector_elem_ptr(const poly_vector_elem_ptr& other) noexcept :
             CloningPolicy(other.policy()), ptr{ other.ptr }, sf{ other.sf }
@@ -545,7 +545,7 @@ namespace estd
         void clear() noexcept
         {
             for (auto src = begin_elem(); src != _free_elem; ++src) {
-                src->ptr.second->~IF();
+                base().destroy(std::addressof(src->ptr.second));
             }
             _free_elem = begin_elem();
             _free_storage = _begin_storage;
@@ -573,27 +573,27 @@ namespace estd
         }
         const_iterator begin()const noexcept
         {
-            return iterator(begin_elem());
+            return const_iterator(begin_elem());
         }
         const_iterator end()const noexcept
         {
-            return iterator(end_elem());
+            return const_iterator(end_elem());
         }
         reverse_iterator rbegin()noexcept
         {
-            return reverse_iterator(end() - 1);
+            return reverse_iterator(--end());
         }
         reverse_iterator rend()noexcept
         {
-            return reverse_iterator(begin() - 1);
+            return reverse_iterator(--begin());
         }
         const_iterator rbegin()const noexcept
         {
-            return iterator(begin_elem());
+            return const_iterator(--end());
         }
         const_iterator rend()const noexcept
         {
-            return iterator(end_elem());
+            return const_iterator(--begin());
         }
         ///////////////////////////////////////////////
         // Capacity
@@ -727,7 +727,7 @@ namespace estd
             size_t desired_size, size_t curr_elem_size = 0, size_t align = 1,
             copy_mem_fun func = &poly_vector::poly_uninitialized_copy)
         {
-            alloc_descr_t n{ false,std::make_pair(desired_size,size_type(0)) };
+            alloc_descr_t n{ false,std::make_pair(desired_size,std::size_t(0)) };
 
             my_base s{};
             while (!n.first) {
@@ -841,7 +841,7 @@ namespace estd
             }
             catch (...) {
                 for (; dst != dst_begin; --dst) {
-                    dst->ptr.second->~IF();
+                    base().destroy(std::addressof(dst->ptr.second));
                 }
                 throw;
             }
@@ -951,7 +951,7 @@ namespace estd
         }
 
         void resize_to_fit(const poly_vector& v,std::size_t new_size,std::size_t size = 0,std::size_t alignment = 1){
-            alloc_descr_t n{ false,std::make_pair(new_size,size_type(0)) };
+            alloc_descr_t n{ false,std::make_pair(new_size,std::size_t(0)) };
             while (!n.first) {
                 n = v.validate_layout(this->storage(), this->end_storage(), n, size, alignment);
                 if (!n.first) {
