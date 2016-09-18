@@ -11,8 +11,13 @@ enable_testing()
 project(estd_test_exe)
 
 file(GLOB estd_test_source_files  *.cpp)
-
-add_executable(estd_test ${estd_test_source_files})
+file(GLOB estd_test_header_files  ../include/*.h)
+file(GLOB estd_header_files  ../../include/*.h)
+set(HEADERS
+        ${estd_test_header_files}
+        ${estd_header_files}
+)
+add_executable(estd_test  ${estd_test_source_files} ${HEADERS})
 
 target_include_directories(estd_test PUBLIC ../../googletest/googletest/include/)
 target_include_directories(estd_test PUBLIC ../../googletest/googlemock/include/)

@@ -210,7 +210,19 @@ namespace estd
         {
             return _end_storage;
         }
-
+        template<typename T>
+        void destroy(T* obj){
+            using traits = typename allocator_traits::template rebind_traits <T>;
+            typename traits::allocator_type a(get_allocator_ref());
+            traits::destroy(a,obj);
+        }
+        template<typename T,typename... Args>
+        T* construct(T* storage,Args&&... args) const{
+            using traits = typename allocator_traits::template rebind_traits <T>;
+            typename traits::allocator_type a(get_allocator_ref());
+            traits::construct(a,storage,std::forward<Args>(args)...);
+            return storage;
+        }
         ////////////////////////////////
         void* _storage;
         void* _end_storage;
@@ -222,6 +234,7 @@ namespace estd
         using size_func_t = std::pair<size_t, size_t>();
         using policy_t = CloningPolicy;
         poly_vector_elem_ptr() : ptr{}, sf{} {}
+
         template<typename T, typename = std::enable_if_t< std::is_base_of< IF, std::decay_t<T> >::value > >
         explicit poly_vector_elem_ptr(T&& t, void* s = nullptr, IF* i = nullptr) noexcept :
             CloningPolicy(std::forward<T>(t)), ptr{ s, i }, sf{ &size_func<std::decay_t<T>> }
@@ -338,6 +351,7 @@ namespace estd
         template<class T>
         static Interface* clone_func(Interface* obj, void* dest, Operation op)
         {
+            //TODO(fecjanky): find a solution to propagate the allocator here from the container
             if (op == Clone)
                 return new(dest) T(*static_cast<const T*>(obj));
             else
@@ -474,16 +488,19 @@ namespace estd
             resize_to_fit(other,other.size());
             set_ptrs(other.poly_uninitialized_copy(begin_elem(), other.size()));
         }
+
         poly_vector(poly_vector&& other) : allocator_base<allocator_type>(std::move(other.base())),
             _free_elem{ other._free_elem }, _begin_storage{ other._begin_storage },
             _free_storage{ other._free_storage }
         {
             other._begin_storage = other._free_storage = other._free_elem = nullptr;
         }
+
         ~poly_vector()
         {
             tidy();
         }
+
         poly_vector& operator=(const poly_vector& rhs)
         {
             if (this != &rhs) {
@@ -491,6 +508,7 @@ namespace estd
             }
             return *this;
         }
+
         poly_vector& operator=(poly_vector&& rhs) noexcept(move_is_noexcept_t::value)
         {
             if (this != &rhs) {
@@ -515,14 +533,15 @@ namespace estd
                 push_back_new_elem(std::forward<T>(obj));
             }
         }
+
         void pop_back()noexcept
         {
-            back().~IF();
-            _free_storage = size() > 1 ? reinterpret_cast<uint8_t*>(begin_elem()[size() - 2].ptr.first) +
-                begin_elem()[size() - 2].size() : _begin_storage;
-            begin_elem()[size() - 1].~poly_vector_elem_ptr();
+            base().destroy(std::addressof(back()));
+            _free_storage = reinterpret_cast<uint8_t*>(_free_storage) - begin_elem()[size() - 1].size();
+            base().destroy(std::addressof(begin_elem()[size() - 1]));
             _free_elem = &begin_elem()[size() - 1];
         }
+
         void clear() noexcept
         {
             for (auto src = begin_elem(); src != _free_elem; ++src) {
@@ -531,6 +550,7 @@ namespace estd
             _free_elem = begin_elem();
             _free_storage = _begin_storage;
         }
+
         void swap(poly_vector& x) noexcept
         {
             using std::swap;
@@ -619,7 +639,7 @@ namespace estd
         {
             reserve(s.first, s.second);
         }
-        // TODO: void shrink_to_fit();
+        // TODO(fecjanky): void shrink_to_fit();
         ///////////////////////////////////////////////
         // Element access
         ///////////////////////////////////////////////
@@ -812,7 +832,7 @@ namespace estd
             void_ptr dst_storage = storage_begin;
             try {
                 for (auto elem = begin_elem(); elem != _free_elem; ++elem, ++dst) {
-                    dst = new (dst) elem_ptr(*elem);
+                    base().construct(static_cast<elem_ptr*>(dst),*elem);
                     dst->ptr.first = next_aligned_storage(dst_storage, elem->align());
                     dst->ptr.second = copy_func(elem, dst);
                     dst_storage = reinterpret_cast<uint8_t*>(dst->ptr.first) + dst->size();
@@ -896,8 +916,8 @@ namespace estd
 
             assert(can_construct_new_elem(s, a));
 
-            _free_elem = new (_free_elem) elem_ptr(std::forward<T>(obj),
-                nas, new (nas) TT(std::forward<T>(obj)));
+            _free_elem = base().construct (_free_elem,std::forward<T>(obj),
+                nas, base().construct(static_cast<TT*>(nas),std::forward<T>(obj)));
             _free_storage = reinterpret_cast<uint8_t*>(_free_elem->ptr.first) + s;
             ++_free_elem;
         }
@@ -957,7 +977,7 @@ namespace estd
         }
         size_t avg_obj_size(size_t align = 1)const noexcept
         {
-            return storage_size() ? (storage_size(_begin_storage, next_aligned_storage(align)) + size() - 1) / size() : 0;
+            return size() ? (storage_size(_begin_storage, next_aligned_storage(align)) + size() - 1) / size() : 0;
         }
         size_t storage_size()const noexcept
         {
