@@ -545,7 +545,7 @@ namespace estd
         void clear() noexcept
         {
             for (auto src = begin_elem(); src != _free_elem; ++src) {
-                base().destroy(std::addressof(src->ptr.second));
+                base().destroy(src->ptr.second);
             }
             _free_elem = begin_elem();
             _free_storage = _begin_storage;
@@ -841,7 +841,7 @@ namespace estd
             }
             catch (...) {
                 for (; dst != dst_begin; --dst) {
-                    base().destroy(std::addressof(dst->ptr.second));
+                    base().destroy(dst->ptr.second);
                 }
                 throw;
             }
