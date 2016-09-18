@@ -20,7 +20,7 @@ matrix:
       install:
         - pip install --user cpp-coveralls
       after_success:
-        - coveralls --gcov $(which gcov-5) --include include --gcov-options '\-lp' --root .. --build-root .
+        - coveralls --gcov $(which gcov-5) --include include --gcov-options '\-lmpacu' --root .. --build-root .
 
     - compiler: clang
       env:
