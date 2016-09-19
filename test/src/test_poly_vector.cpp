@@ -80,7 +80,7 @@ protected:
 TYPED_TEST_CASE_P(poly_vector_modifiers_test);
 
 using CloneTypes = ::testing::Types<
-    estd::delegate_cloning_policy<Interface>,
+    estd::virtual_cloning_policy<Interface>,
     estd::delegate_cloning_policy<Interface>
 >;
 
