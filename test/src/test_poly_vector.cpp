@@ -61,6 +61,14 @@ TEST(poly_vector_basic_tests, descendants_of_interface_can_be_pushed_back_into_t
     EXPECT_EQ(2, v.size());
 }
 
+TEST(poly_vector_basic_tests, is_not_copyable_with_no_cloning_policy)
+{
+    estd::poly_vector<Interface, std::allocator<Interface>, estd::no_cloning_policy<Interface>> v{};
+    v.reserve(2, 64);
+    v.push_back(Impl1(3.14));
+    v.push_back(Impl2());
+    EXPECT_THROW(v.push_back(Impl2()), std::exception);
+}
 
 template<class CloningPolicy>
 class poly_vector_modifiers_test : public ::testing::Test {
@@ -191,6 +199,31 @@ TYPED_TEST_P(poly_vector_modifiers_test, move_assignment_moves_contained_elems)
 
 }
 
+TYPED_TEST_P(poly_vector_modifiers_test, strog_guarantee_when_there_is_an_exception_during_push_back_w_reallocation)
+{
+
+    this->v[1].set_throw_on_copy_construction(true);
+    while (this->v.capacity() - this->v.size() > 0) {
+        this->v.push_back(Impl1{});
+    }
+    if (!std::is_same<TypeParam, estd::delegate_cloning_policy<Interface>>{}) {
+        std::vector<uint8_t> ref_storage(static_cast<uint8_t*>(this->v.data().first), static_cast<uint8_t*>(this->v.data().second));
+        auto data = this->v.data();
+        auto size = this->v.sizes();
+        auto caps = this->v.capacities();
+
+        EXPECT_THROW(this->v.push_back(Impl2{}), std::exception);
+
+        EXPECT_EQ(data, this->v.data());
+        EXPECT_EQ(size, this->v.sizes());
+        EXPECT_EQ(caps, this->v.capacities());
+        EXPECT_TRUE(0 == memcmp(ref_storage.data(), this->v.data().first, ref_storage.size()));
+    }
+    else {
+        EXPECT_NO_THROW(this->v.push_back(Impl2{}));
+    }
+}
+
 REGISTER_TYPED_TEST_CASE_P(poly_vector_modifiers_test,
     back_accesses_the_last_element, 
     front_accesses_the_first_element,
@@ -201,7 +234,8 @@ REGISTER_TYPED_TEST_CASE_P(poly_vector_modifiers_test,
     at_operator_throws_out_of_range_error_on_overindexing,
     swap_swaps_the_contents_of_two_vectors,
     copy_assignment_copies_contained_elems,
-    move_assignment_moves_contained_elems
+    move_assignment_moves_contained_elems,
+    strog_guarantee_when_there_is_an_exception_during_push_back_w_reallocation
 );
 
 INSTANTIATE_TYPED_TEST_CASE_P(poly_vector, poly_vector_modifiers_test, CloneTypes);

@@ -338,7 +338,7 @@ namespace estd
             typename T,
             typename = std::enable_if_t<!std::is_same<delegate_cloning_policy, std::decay_t<T>>::value >
         >
-            delegate_cloning_policy(T&& t) noexcept :
+            explicit delegate_cloning_policy(T&& t) noexcept :
         cf(&delegate_cloning_policy::clone_func< std::decay_t<T> >)
         {
             // this ensures, that if policy requires noexcept move construction that a given T type also has it
@@ -355,7 +355,7 @@ namespace estd
             if (op == Clone)
                 return new(dest) T(*static_cast<const T*>(obj));
             else
-                return new(dest) T(std::move(*static_cast<const T*>(obj)));
+                return new(dest) T(std::move(*static_cast<T*>(obj)));
         }
 
         Interface* clone(Interface* obj, void* dest) const
@@ -485,7 +485,7 @@ namespace estd
             _free_elem{ begin_elem() }, _begin_storage{ begin_elem() + other.capacity() },
             _free_storage{ _begin_storage }
         {
-            resize_to_fit(other,other.size());
+            resize_to_fit(other, other.size());
             set_ptrs(other.poly_uninitialized_copy(begin_elem(), other.size()));
         }
 
@@ -630,10 +630,10 @@ namespace estd
             if (n <= capacities().first && avg_size <= capacities().second) return;
             if (n > max_size())throw std::length_error("poly_vector reserve size too big");
             increase_storage(*this, *this, n, avg_size, alignof(std::max_align_t),
-                             select_copy_method(noexcept_moveable{}));
+                select_copy_method(noexcept_moveable{}));
         }
-        void reserve(size_type n){
-            reserve(n,default_avg_size);
+        void reserve(size_type n) {
+            reserve(n, default_avg_size);
         }
         void reserve(std::pair<size_t, size_t> s)
         {
@@ -676,6 +676,12 @@ namespace estd
         const_interface_reference back()const noexcept
         {
             return (*this)[size() - 1];
+        }
+        std::pair<void*, void*> data() noexcept{
+            return std::make_pair(base()._storage,base()._end_storage);
+        }
+        std::pair<const void*,const void*> data() const noexcept {
+            return std::make_pair(base()._storage, base()._end_storage);
         }
         ////////////////////////////
         // Misc.
@@ -827,6 +833,7 @@ namespace estd
         template<typename F>
         poly_copy_descr poly_uninitialized(elem_ptr* dst, size_t n, F copy_func) const
         {
+            // TODO: investigate if dsts allocator is required here
             auto dst_begin = dst;
             const auto storage_begin = dst + n;
             void_ptr dst_storage = storage_begin;
@@ -840,8 +847,11 @@ namespace estd
                 return std::make_tuple(dst, storage_begin, dst_storage);
             }
             catch (...) {
-                for (; dst != dst_begin; --dst) {
+                base().destroy(dst);
+                while(dst-- != dst_begin)
+                {
                     base().destroy(dst->ptr.second);
+                    base().destroy(dst);
                 }
                 throw;
             }
@@ -868,7 +878,6 @@ namespace estd
             else
                 return copy_move_helper(std::move(rhs), &poly_vector::poly_uninitialized_move);
         }
-
 
         template<typename T>
         poly_vector& copy_move_helper(T&& rhs, copy_mem_fun func)
@@ -935,7 +944,6 @@ namespace estd
             //////////////////////////////////////////
             poly_vector v(base().get_allocator_ref());
             const auto newsize = std::max(size() * 2, size_t(1));
-            v.reserve(newsize, new_avg_obj_size(s, a));
             v.resize_to_fit(*this, newsize, s, a);
             // move if rvalue ref and cloning policy move is noexcept
             push_back_new_elem_w_storage_increase_copy(v, select{});
