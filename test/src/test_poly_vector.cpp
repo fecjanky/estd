@@ -2,6 +2,7 @@
 #include "gmock/gmock.h"
 #include <iostream>
 #include <vector>
+#include <algorithm>
 
 
 #include "poly_vector.h"
@@ -64,7 +65,7 @@ TEST(poly_vector_basic_tests, descendants_of_interface_can_be_pushed_back_into_t
 TEST(poly_vector_basic_tests, is_not_copyable_with_no_cloning_policy)
 {
     estd::poly_vector<Interface, std::allocator<Interface>, estd::no_cloning_policy<Interface>> v{};
-    v.reserve(2, 64);
+    v.reserve(2, std::max(sizeof(Impl1),sizeof(Impl2)));
     v.push_back(Impl1(3.14));
     v.push_back(Impl2());
     EXPECT_THROW(v.push_back(Impl2()), std::exception);
