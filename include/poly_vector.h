@@ -30,6 +30,7 @@
 #include <algorithm>
 #include <tuple>
 #include <cmath>
+#include <type_traits>
 #include "memory.h"
 
 namespace estd
@@ -59,7 +60,70 @@ namespace estd
 
         template<typename... Ts>
         using or_type_t = typename OrType<Ts...>::type;
+
+        template<typename T>
+        struct TD;
+
+
+        template<class TT>
+        struct has_noexcept_movable{
+            template<class U>
+            static std::true_type test(U&&,typename std::decay_t<U>::noexcept_movable *);
+            static std::false_type test(...);
+            static constexpr bool value =
+                    std::is_same<std::true_type,decltype(test(std::declval<TT>(),nullptr))>::value;
+        };
+
+        template<class TT,bool HasType>
+        struct is_noexcept_movable{
+            using type = typename TT::noexcept_movable;
+        };
+        template<class TT>
+        struct is_noexcept_movable<TT,false>{
+            using type = std::false_type;
+        };
+
+        template<class TT>
+        using is_noexcept_movable_t = typename is_noexcept_movable<TT,has_noexcept_movable<TT>::value>::type;
+
+        template<class T,class IF,class A>
+        struct is_cloning_policy_impl{
+            using void_ptr = typename std::allocator_traits<A>::void_pointer;
+            template<class TT>
+            struct has_clone{
+                template<class U>
+                static decltype(std::declval<U>()
+                        .clone(std::declval<A>(),std::declval<IF*>(),std::declval<void_ptr>()))* test(U&&);
+
+                static std::false_type test(...);
+
+                static constexpr bool value = std::is_same<decltype(test(std::declval<TT>())),IF**>::value;
+            };
+            template<class TT>
+            struct has_move{
+                template<class U>
+                static decltype(std::declval<U>()
+                        .move(std::declval<A>(),std::declval<IF*>(),std::declval<void_ptr>()))* test(U&&);
+                static std::false_type test(...);
+                static constexpr bool value = std::is_same<IF**,decltype(test(std::declval<TT>()))>::value;
+            };
+
+            static constexpr bool value =
+                    std::is_nothrow_constructible<T>::value &&
+                    std::is_nothrow_copy_constructible<T>::value &&
+                    std::is_nothrow_copy_assignable<T>::value &&
+                    (has_clone<T>::value || (has_move<T>::value && is_noexcept_movable_t<T>::value));
+        };
     }  //namespace poly_vector_impl
+
+    template<class Policy,class Interface,class Allocator>
+    using is_cloning_policy = std::integral_constant<bool,poly_vector_impl::is_cloning_policy_impl<Policy,Interface,Allocator>::value>;
+
+    template<typename CloningPolicy>
+    struct cloning_policy_traits{
+        using noexcept_movable = poly_vector_impl::is_noexcept_movable_t<CloningPolicy>;
+    };
+
 
     template<class Allocator = std::allocator<uint8_t> >
     struct allocator_base : private Allocator
@@ -284,7 +348,7 @@ namespace estd
     struct virtual_cloning_policy
     {
         static constexpr bool nem = noexcept(std::declval<IF*>()->move(std::declval<Allocator>(),std::declval<void*>()));
-        using noexcept_moveable = std::integral_constant<bool, nem>;
+        using noexcept_movable = std::integral_constant<bool, nem>;
         virtual_cloning_policy() = default;
         template<typename T>
         virtual_cloning_policy(T&& t) {};
@@ -308,7 +372,7 @@ namespace estd
                 return "cloning attempt with no_cloning_policy";
             }
         };
-        using  noexcept_moveable = std::false_type;
+        using  noexcept_movable = std::false_type;
         no_cloning_policy() = default;
         template<typename T>
         no_cloning_policy(T&& t) {};
@@ -322,7 +386,7 @@ namespace estd
         }
     };
 
-    template<class Interface,class Allocator = std::allocator<Interface>, typename NoExceptMoveAble = std::true_type>
+    template<class Interface,class Allocator = std::allocator<Interface>, typename NoExceptmovable = std::true_type>
     struct delegate_cloning_policy
     {
         enum Operation {
@@ -331,8 +395,8 @@ namespace estd
         };
 
         typedef Interface* (*clone_func_t)(const Allocator& a,Interface* obj, void* dest, Operation);
-        using  noexcept_moveable = NoExceptMoveAble;
-        delegate_cloning_policy() :cf{} {}
+        using  noexcept_movable = NoExceptmovable;
+        delegate_cloning_policy() noexcept :cf{} {}
 
         template <
             typename T,
@@ -342,7 +406,7 @@ namespace estd
         cf(&delegate_cloning_policy::clone_func< std::decay_t<T> >)
         {
             // this ensures, that if policy requires noexcept move construction that a given T type also has it
-            static_assert(!noexcept_moveable::value || std::is_nothrow_move_constructible<std::decay_t<T>>::value,
+            static_assert(!noexcept_movable::value || std::is_nothrow_move_constructible<std::decay_t<T>>::value,
                 "delegate cloning policy requires noexcept move constructor");
         };
 
@@ -366,7 +430,7 @@ namespace estd
             return cf(a,obj, dest, Clone);
         }
 
-        Interface* move(const Allocator& a,Interface* obj, void* dest) const noexcept(noexcept_moveable::value)
+        Interface* move(const Allocator& a,Interface* obj, void* dest) const noexcept(noexcept_movable::value)
         {
             return cf(a,obj, dest, Move);
         }
@@ -445,8 +509,8 @@ namespace estd
 
     template<
         class IF,
-        class Allocator = std::allocator<uint8_t>,
-        class CloningPolicy = virtual_cloning_policy<IF>
+        class Allocator = std::allocator<IF>,
+        class CloningPolicy = delegate_cloning_policy<IF,Allocator> // implicit noexcept_movability required
     >
         class poly_vector :
         private allocator_base<
@@ -458,10 +522,10 @@ namespace estd
         // Member types
         ///////////////////////////////////////////////
         using interface_type = std::decay_t<IF>;
-        using interface_ptr = interface_type*;
+        using interface_ptr = std::add_pointer_t<interface_type>;
         using const_interface_ptr = const interface_type*;
         using interface_reference = interface_type&;
-        using const_interface_reference = const interface_type&;
+        using const_interface_reference = std::add_lvalue_reference_t<std::add_const_t<interface_type>>;
         using allocator_type = typename std::allocator_traits<Allocator>::template rebind_alloc<uint8_t>;
         using allocator_traits = std::allocator_traits<allocator_type>;
         using void_ptr = void*;
@@ -476,6 +540,7 @@ namespace estd
         >;
         static constexpr auto default_avg_size = 4 * sizeof(void*);
         static_assert(std::is_polymorphic<interface_type>::value, "interface_type is not polymorphic");
+        static_assert(is_cloning_policy<CloningPolicy,interface_type,Allocator>::value,"invalid cloning policy type");
         ///////////////////////////////////////////////
         // Ctors,Dtors & assignment
         ///////////////////////////////////////////////
@@ -633,7 +698,7 @@ namespace estd
             if (n <= capacities().first && avg_size <= capacities().second) return;
             if (n > max_size())throw std::length_error("poly_vector reserve size too big");
             increase_storage(*this, *this, n, avg_size, alignof(std::max_align_t),
-                select_copy_method(noexcept_moveable{}));
+                select_copy_method(noexcept_movable{}));
         }
         void reserve(size_type n) {
             reserve(n, default_avg_size);
@@ -699,7 +764,7 @@ namespace estd
         using alloc_descr_t = std::pair<bool, std::pair<size_t, size_t>>;
         using poly_copy_descr = std::tuple<elem_ptr*, elem_ptr*, void*>;
         typedef poly_copy_descr(poly_vector::*copy_mem_fun)(elem_ptr*, size_t) const;
-        using noexcept_moveable = typename elem_ptr::policy_t::noexcept_moveable;
+        using noexcept_movable = typename cloning_policy_traits<CloningPolicy>::noexcept_movable;
 
         static alloc_descr_t make_alloc_descr(bool b, size_t size, size_t align)noexcept
         {
@@ -943,7 +1008,7 @@ namespace estd
             constexpr auto a = alignof(TT);
             using select = std::conditional_t<std::is_reference<T>::value,
                 std::false_type,
-                typename CloningPolicy::noexcept_moveable
+                typename CloningPolicy::noexcept_movable
             >;
             //////////////////////////////////////////
             poly_vector v(base().get_allocator_ref());
