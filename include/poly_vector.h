@@ -137,7 +137,11 @@ namespace estd
         using allocator_is_always_equal = ::estd::impl::allocator_is_always_equal_t<Allocator>;
         static_assert(std::is_same<value_type, uint8_t>::value, "requires a byte allocator");
         using allocator_type = Allocator;
-        using void_ptr = void*;
+        using void_ptr = typename allocator_traits::void_pointer;
+        using const_void_ptr = typename allocator_traits::const_void_pointer;
+        using difference_type = typename  allocator_traits::difference_type;
+        using pointer = typename allocator_traits::pointer ;
+        using const_pointer = typename allocator_traits::const_pointer;
         //////////////////////////////////////////////
         allocator_base(const Allocator& a = Allocator()) : Allocator(a), _storage{}, _end_storage{} {}
         allocator_base(size_t n, const Allocator& a = Allocator()) : Allocator(a), _storage{}, _end_storage{}
@@ -206,7 +210,7 @@ namespace estd
         allocator_base& copy_assign_impl(const allocator_base& a, std::true_type)
         {
             // Note: allocator copy assignment must not throw
-            uint8_t* s = nullptr;
+            pointer s = nullptr;
             if (a.size())
                 s = a.get_allocator_ref().allocate(a.size());
             tidy();
@@ -217,7 +221,7 @@ namespace estd
         }
         allocator_base& copy_assign_impl(const allocator_base& a, std::false_type)
         {
-            uint8_t* s = nullptr;
+            pointer s = nullptr;
             if (a.size())
                 s = get_allocator_ref().allocate(a.size());
             tidy();
@@ -245,62 +249,71 @@ namespace estd
 
         void tidy() noexcept
         {
-            get_allocator_ref().deallocate(reinterpret_cast<uint8_t*>(_storage), size());
+            get_allocator_ref().deallocate(static_cast<pointer>(_storage), size());
             _storage = _end_storage = nullptr;
         }
+
         ~allocator_base()
         {
             tidy();
         }
 
-        size_t size()const noexcept
+        difference_type size()const noexcept
         {
-            return reinterpret_cast<uint8_t*>(_end_storage) -
-                reinterpret_cast<uint8_t*>(_storage);
+            return static_cast<pointer>(_end_storage) -
+                static_cast<pointer>(_storage);
         }
-        void* storage()noexcept
-        {
-            return _storage;
-        }
-        void* end_storage()noexcept
-        {
-            return _end_storage;
-        }
-        const void* storage()const noexcept
+
+        void_ptr storage()noexcept
         {
             return _storage;
         }
-        const void* end_storage()const noexcept
+        void_ptr end_storage()noexcept
         {
             return _end_storage;
         }
-        template<typename T>
-        void destroy(T* obj) const{
+        const_void_ptr storage()const noexcept
+        {
+            return _storage;
+        }
+        const_void_ptr end_storage()const noexcept
+        {
+            return _end_storage;
+        }
+        template<typename PointerType>
+        void destroy(PointerType obj) const{
+            using T = std::decay_t<decltype(*obj)>;
             using traits = typename allocator_traits::template rebind_traits <T>;
+            static_assert(std::is_same<PointerType, typename traits::pointer>::value,"Invalid pointer type");
             typename traits::allocator_type a(get_allocator_ref());
             traits::destroy(a,obj);
         }
-        template<typename T,typename... Args>
-        T* construct(T* storage,Args&&... args) const{
+        template<typename PointerType,typename... Args>
+        PointerType construct(PointerType storage,Args&&... args) const{
+            using T = std::decay_t<decltype(*storage)>;
             using traits = typename allocator_traits::template rebind_traits <T>;
+            static_assert(std::is_same<PointerType, typename traits::pointer>::value,"Invalid pointer type");
             typename traits::allocator_type a(get_allocator_ref());
             traits::construct(a,storage,std::forward<Args>(args)...);
             return storage;
         }
         ////////////////////////////////
-        void* _storage;
-        void* _end_storage;
+        void_ptr _storage;
+        void_ptr _end_storage;
     };
 
-    template<class IF, class CloningPolicy>
+    template<class Allocator,class CloningPolicy>
     struct poly_vector_elem_ptr : private CloningPolicy
     {
+        using IF = typename  std::allocator_traits<Allocator>::value_type;
+        using void_pointer = typename std::allocator_traits<Allocator>::void_pointer;
+        using pointer = typename std::allocator_traits<Allocator>::pointer;
         using size_func_t = std::pair<size_t, size_t>();
         using policy_t = CloningPolicy;
         poly_vector_elem_ptr() : ptr{}, sf{} {}
 
         template<typename T, typename = std::enable_if_t< std::is_base_of< IF, std::decay_t<T> >::value > >
-        explicit poly_vector_elem_ptr(T&& t, void* s = nullptr, IF* i = nullptr) noexcept :
+        explicit poly_vector_elem_ptr(T&& t, void_pointer s = nullptr, pointer i = nullptr) noexcept :
             CloningPolicy(std::forward<T>(t)), ptr{ s, i }, sf{ &poly_vector_elem_ptr::size_func<std::decay_t<T>>}
         {}
         poly_vector_elem_ptr(const poly_vector_elem_ptr& other) noexcept :
@@ -339,7 +352,7 @@ namespace estd
             sf = nullptr;
         }
 
-        std::pair<void*, IF*> ptr;
+        std::pair<void_pointer, pointer> ptr;
     private:
         size_func_t* sf;
     };
@@ -349,14 +362,17 @@ namespace estd
     {
         static constexpr bool nem = noexcept(std::declval<IF*>()->move(std::declval<Allocator>(),std::declval<void*>()));
         using noexcept_movable = std::integral_constant<bool, nem>;
+        using void_pointer = typename std::allocator_traits<Allocator>::void_pointer;
+        using pointer = typename std::allocator_traits<Allocator>::pointer;
+
         virtual_cloning_policy() = default;
         template<typename T>
         virtual_cloning_policy(T&& t) {};
-        IF* clone(const Allocator& a,IF* obj, void* dest) const
+        pointer clone(const Allocator& a,pointer obj, void_pointer dest) const
         {
             return obj->clone(a,dest);
         }
-        IF* move(const Allocator& a,IF* obj, void* dest) const noexcept(nem)
+        pointer move(const Allocator& a,pointer obj, void_pointer dest) const noexcept(nem)
         {
             return obj->move(a,dest);
         }
@@ -372,15 +388,14 @@ namespace estd
                 return "cloning attempt with no_cloning_policy";
             }
         };
-        using  noexcept_movable = std::false_type;
+        using noexcept_movable = std::false_type;
+        using void_pointer = typename std::allocator_traits<Allocator>::void_pointer;
+        using pointer = typename std::allocator_traits<Allocator>::pointer;
+
         no_cloning_policy() = default;
         template<typename T>
         no_cloning_policy(T&& t) {};
-        IF* clone(const Allocator& a,IF* obj, void* dest) const
-        {
-            throw exception{};
-        }
-        IF* move(const Allocator& a,IF* obj, void* dest) const
+        pointer clone(const Allocator& a,pointer obj, void_pointer dest) const
         {
             throw exception{};
         }
@@ -395,7 +410,11 @@ namespace estd
         };
 
         typedef Interface* (*clone_func_t)(const Allocator& a,Interface* obj, void* dest, Operation);
-        using  noexcept_movable = NoExceptmovable;
+        using noexcept_movable = NoExceptmovable;
+        using void_pointer = typename std::allocator_traits<Allocator>::void_pointer;
+        using pointer = typename std::allocator_traits<Allocator>::pointer;
+        using const_pointer = typename std::allocator_traits<Allocator>::const_pointer;
+
         delegate_cloning_policy() noexcept :cf{} {}
 
         template <
@@ -413,24 +432,27 @@ namespace estd
         delegate_cloning_policy(const delegate_cloning_policy & other) noexcept : cf{ other.cf } {}
 
         template<class T>
-        static Interface* clone_func(const Allocator& a,Interface* obj, void* dest, Operation op)
+        static pointer clone_func(const Allocator& a,pointer obj, void_pointer dest, Operation op)
         {
             using traits = typename std::allocator_traits<Allocator>::template rebind_traits <T>;
+            using obj_pointer = typename traits::pointer;
+            using obj_const_pointer = typename traits::const_pointer;
+
             typename traits::allocator_type alloc(a);
             if (op == Clone) {
-                traits::construct(alloc, static_cast<T *>(dest), *static_cast<const T *>(obj));
+                traits::construct(alloc, static_cast<obj_pointer>(dest), *static_cast<obj_const_pointer>(obj));
             } else {
-                traits::construct(alloc, static_cast<T *>(dest), std::move(*static_cast<T*>(obj)));
+                traits::construct(alloc, static_cast<obj_pointer>(dest), std::move(*static_cast<obj_pointer>(obj)));
             }
-            return static_cast<T*>(dest);
+            return static_cast<obj_pointer>(dest);
         }
 
-        Interface* clone(const Allocator& a,Interface* obj, void* dest) const
+        pointer clone(const Allocator& a,pointer obj, void_pointer dest) const
         {
             return cf(a,obj, dest, Clone);
         }
 
-        Interface* move(const Allocator& a,Interface* obj, void* dest) const noexcept(noexcept_movable::value)
+        pointer move(const Allocator& a,pointer obj, void_pointer dest) const noexcept(noexcept_movable::value)
         {
             return cf(a,obj, dest, Move);
         }
@@ -440,14 +462,16 @@ namespace estd
     };
 
 
-    template<class IF, class CP>
+    template<class IF,class Allocator,class CP>
     class poly_vector_iterator
     {
     public:
-        using void_ptr = void*;
-        using interface_type = IF;
-        using interface_ptr = interface_type*;
-        using elem_ptr = poly_vector_elem_ptr<IF, CP>;
+        using elem_ptr = poly_vector_elem_ptr<Allocator, CP>;
+        using void_ptr = typename std::allocator_traits<Allocator>::void_pointer;
+        using pointer = typename std::allocator_traits<Allocator>::pointer ;
+        using const_pointer = typename std::allocator_traits<Allocator>::const_pointer;
+        using reference = decltype(*std::declval<pointer>());
+        using const_reference = decltype(*std::declval<const_pointer>());
 
         poly_vector_iterator() : curr{} {}
         explicit poly_vector_iterator(elem_ptr* p) : curr{ p } {}
@@ -455,19 +479,19 @@ namespace estd
         poly_vector_iterator& operator=(const poly_vector_iterator&) = default;
         ~poly_vector_iterator() = default;
 
-        IF* operator->() noexcept
+        pointer operator->() noexcept
         {
             return curr->ptr.second;
         }
-        IF& operator*()noexcept
+        reference operator*()noexcept
         {
             return *curr->ptr.second;
         }
-        const IF* operator->() const noexcept
+        const_pointer operator->() const noexcept
         {
             return curr->ptr.second;
         }
-        const IF& operator*()const noexcept
+        const_reference operator*()const noexcept
         {
             return *curr->ptr.second;
         }
@@ -510,7 +534,7 @@ namespace estd
     template<
         class IF,
         class Allocator = std::allocator<IF>,
-        class CloningPolicy = delegate_cloning_policy<IF,Allocator> // implicit noexcept_movability required
+        class CloningPolicy = delegate_cloning_policy<IF,Allocator> // implicit noexcept_movability when using defaults
     >
         class poly_vector :
         private allocator_base<
@@ -527,11 +551,12 @@ namespace estd
         using interface_reference = interface_type&;
         using const_interface_reference = std::add_lvalue_reference_t<std::add_const_t<interface_type>>;
         using allocator_type = typename std::allocator_traits<Allocator>::template rebind_alloc<uint8_t>;
+        using interface_allocator_type = typename std::allocator_traits<Allocator>::template rebind_alloc<interface_type>;
         using allocator_traits = std::allocator_traits<allocator_type>;
         using void_ptr = void*;
         using size_type = std::size_t;
-        using iterator = poly_vector_iterator<interface_type, CloningPolicy>;
-        using const_iterator = poly_vector_iterator<const interface_type, const CloningPolicy>;
+        using iterator = poly_vector_iterator<interface_type ,interface_allocator_type, CloningPolicy>;
+        using const_iterator = poly_vector_iterator<const interface_type,interface_allocator_type, const CloningPolicy>;
         using reverse_iterator = std::reverse_iterator<iterator>;
         using const_reverse_iterator = std::reverse_iterator<const_iterator>;
         using move_is_noexcept_t = poly_vector_impl::or_type_t<
@@ -760,7 +785,7 @@ namespace estd
         }
     private:
         using my_base = allocator_base<allocator_type>;
-        using elem_ptr = poly_vector_elem_ptr<interface_type, CloningPolicy>;
+        using elem_ptr = poly_vector_elem_ptr<typename allocator_traits::template rebind_alloc<interface_type>, CloningPolicy>;
         using alloc_descr_t = std::pair<bool, std::pair<size_t, size_t>>;
         using poly_copy_descr = std::tuple<elem_ptr*, elem_ptr*, void*>;
         typedef poly_copy_descr(poly_vector::*copy_mem_fun)(elem_ptr*, size_t) const;
