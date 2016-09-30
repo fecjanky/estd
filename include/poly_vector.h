@@ -280,25 +280,25 @@ namespace estd
         size_func_t* sf;
     };
 
-    template<class IF>
+    template<class IF,class Allocator = std::allocator<IF> >
     struct virtual_cloning_policy
     {
-        static constexpr bool nem = noexcept(std::declval<IF*>()->move(std::declval<void*>()));
+        static constexpr bool nem = noexcept(std::declval<IF*>()->move(std::declval<Allocator>(),std::declval<void*>()));
         using noexcept_moveable = std::integral_constant<bool, nem>;
         virtual_cloning_policy() = default;
         template<typename T>
         virtual_cloning_policy(T&& t) {};
-        IF* clone(IF* obj, void* dest) const
+        IF* clone(const Allocator& a,IF* obj, void* dest) const
         {
-            return obj->clone(dest);
+            return obj->clone(a,dest);
         }
-        IF* move(IF* obj, void* dest) const noexcept(nem)
+        IF* move(const Allocator& a,IF* obj, void* dest) const noexcept(nem)
         {
-            return obj->move(dest);
+            return obj->move(a,dest);
         }
     };
 
-    template<class IF>
+    template<class IF,class Allocator = std::allocator<IF> >
     struct no_cloning_policy
     {
         struct exception : public std::exception
@@ -312,17 +312,17 @@ namespace estd
         no_cloning_policy() = default;
         template<typename T>
         no_cloning_policy(T&& t) {};
-        IF* clone(IF* obj, void* dest) const
+        IF* clone(const Allocator& a,IF* obj, void* dest) const
         {
             throw exception{};
         }
-        IF* move(IF* obj, void* dest) const
+        IF* move(const Allocator& a,IF* obj, void* dest) const
         {
             throw exception{};
         }
     };
 
-    template<class Interface, typename NoExceptMoveAble = std::true_type>
+    template<class Interface,class Allocator = std::allocator<Interface>, typename NoExceptMoveAble = std::true_type>
     struct delegate_cloning_policy
     {
         enum Operation {
@@ -330,7 +330,7 @@ namespace estd
             Move
         };
 
-        typedef Interface* (*clone_func_t)(Interface* obj, void* dest, Operation);
+        typedef Interface* (*clone_func_t)(const Allocator& a,Interface* obj, void* dest, Operation);
         using  noexcept_moveable = NoExceptMoveAble;
         delegate_cloning_policy() :cf{} {}
 
@@ -349,23 +349,26 @@ namespace estd
         delegate_cloning_policy(const delegate_cloning_policy & other) noexcept : cf{ other.cf } {}
 
         template<class T>
-        static Interface* clone_func(Interface* obj, void* dest, Operation op)
+        static Interface* clone_func(const Allocator& a,Interface* obj, void* dest, Operation op)
         {
-            //TODO(fecjanky): find a solution to propagate the allocator here from the container
-            if (op == Clone)
-                return new(dest) T(*static_cast<const T*>(obj));
-            else
-                return new(dest) T(std::move(*static_cast<T*>(obj)));
+            using traits = typename std::allocator_traits<Allocator>::template rebind_traits <T>;
+            typename traits::allocator_type alloc(a);
+            if (op == Clone) {
+                traits::construct(alloc, static_cast<T *>(dest), *static_cast<const T *>(obj));
+            } else {
+                traits::construct(alloc, static_cast<T *>(dest), std::move(*static_cast<T*>(obj)));
+            }
+            return static_cast<T*>(dest);
         }
 
-        Interface* clone(Interface* obj, void* dest) const
+        Interface* clone(const Allocator& a,Interface* obj, void* dest) const
         {
-            return cf(obj, dest, Clone);
+            return cf(a,obj, dest, Clone);
         }
 
-        Interface* move(Interface* obj, void* dest) const noexcept(noexcept_moveable::value)
+        Interface* move(const Allocator& a,Interface* obj, void* dest) const noexcept(noexcept_moveable::value)
         {
-            return cf(obj, dest, Move);
+            return cf(a,obj, dest, Move);
         }
         /////////////////////////
     private:
@@ -815,24 +818,6 @@ namespace estd
 
         poly_copy_descr poly_uninitialized_copy(elem_ptr* dst, size_t n) const
         {
-            return poly_uninitialized(dst, n,
-                [](const elem_ptr* e, elem_ptr* d) -> interface_ptr {
-                return e->policy().clone(e->ptr.second, d->ptr.first);
-            });
-        }
-
-        poly_copy_descr poly_uninitialized_move(elem_ptr* dst, size_t n) const
-            noexcept(noexcept_moveable::value)
-        {
-            return poly_uninitialized(dst, n,
-                [](const elem_ptr* e, elem_ptr* d) -> interface_ptr {
-                return e->policy().move(e->ptr.second, d->ptr.first);
-            });
-        }
-
-        template<typename F>
-        poly_copy_descr poly_uninitialized(elem_ptr* dst, size_t n, F copy_func) const
-        {
             // TODO: investigate if dsts allocator is required here
             auto dst_begin = dst;
             const auto storage_begin = dst + n;
@@ -841,12 +826,11 @@ namespace estd
                 for (auto elem = begin_elem(); elem != _free_elem; ++elem, ++dst) {
                     base().construct(static_cast<elem_ptr*>(dst),*elem);
                     dst->ptr.first = next_aligned_storage(dst_storage, elem->align());
-                    dst->ptr.second = copy_func(elem, dst);
+                    dst->ptr.second = elem->policy().clone(base().get_allocator_ref(),elem->ptr.second, dst->ptr.first);
                     dst_storage = reinterpret_cast<uint8_t*>(dst->ptr.first) + dst->size();
                 }
                 return std::make_tuple(dst, storage_begin, dst_storage);
-            }
-            catch (...) {
+            } catch (...) {
                 base().destroy(dst);
                 while(dst-- != dst_begin)
                 {
@@ -855,6 +839,26 @@ namespace estd
                 }
                 throw;
             }
+        }
+
+        poly_copy_descr poly_uninitialized_move(elem_ptr* dst, size_t n) const noexcept
+        {
+            // TODO: investigate if dsts allocator is required here
+            auto dst_begin = dst;
+            const auto storage_begin = dst + n;
+            void_ptr dst_storage = storage_begin;
+            for (auto elem = begin_elem(); elem != _free_elem; ++elem, ++dst) {
+                base().construct(static_cast<elem_ptr*>(dst),*elem);
+                dst->ptr.first = next_aligned_storage(dst_storage, elem->align());
+                dst->ptr.second =  elem->policy().move(base().get_allocator_ref(),elem->ptr.second, dst->ptr.first);
+                dst_storage = reinterpret_cast<uint8_t*>(dst->ptr.first) + dst->size();
+            }
+            return std::make_tuple(dst, storage_begin, dst_storage);
+        }
+
+        template<typename F>
+        poly_copy_descr poly_uninitialized(elem_ptr* dst, size_t n, F copy_func) const
+        {
         }
 
         poly_vector& copy_assign_impl(const poly_vector& rhs)

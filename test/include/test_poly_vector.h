@@ -67,8 +67,8 @@ struct Interface
     Interface& operator=(const Interface& i) = delete;
 
     virtual void function() = 0;
-    virtual Interface* clone(void*) = 0;
-    virtual Interface* move(void* dest) = 0;
+    virtual Interface* clone(std::allocator<Interface>,void*) = 0;
+    virtual Interface* move(std::allocator<Interface>,void* dest) = 0;
     virtual ~Interface() = default;
     bool operator<(const Interface& rhs)const noexcept
     {
@@ -109,11 +109,11 @@ public:
     {
         d += 1.0;
     }
-    virtual Interface* clone(void* dest) override
+    virtual Interface* clone(std::allocator<Interface>,void* dest) override
     {
         return new (dest) Impl1(*this);
     }
-    virtual Interface* move(void* dest)  override
+    virtual Interface* move(std::allocator<Interface>,void* dest)  override
     {
         return new (dest) Impl1(std::move(*this));
     }
@@ -141,11 +141,11 @@ public:
     {
         v.push_back(Impl1{ 3.1 });
     }
-    virtual Interface* clone(void* dest) override
+    virtual Interface* clone(std::allocator<Interface>,void* dest) override
     {
         return new (dest) Impl2T(*this);
     }
-    virtual Interface* move(void* dest) override
+    virtual Interface* move(std::allocator<Interface>,void* dest) override
     {
         return new (dest) Impl2T(std::move(*this));
     }
