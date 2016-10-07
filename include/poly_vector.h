@@ -90,39 +90,64 @@ namespace estd
         template<class T,class IF,class A>
         struct is_cloning_policy_impl{
             using void_ptr = typename std::allocator_traits<A>::void_pointer;
+            using pointer = typename std::allocator_traits<A>::pointer;
+
             template<class TT>
-            struct has_clone{
+            struct has_clone_impl{
                 template<class U>
                 static decltype(std::declval<U>()
-                        .clone(std::declval<A>(),std::declval<IF*>(),std::declval<void_ptr>()))* test(U&&);
+                        .clone(std::declval<A>(),std::declval<pointer>(),std::declval<void_ptr>()))* test(U&&);
 
                 static std::false_type test(...);
 
-                static constexpr bool value = std::is_same<decltype(test(std::declval<TT>())),IF**>::value;
+                static constexpr bool value = std::is_same<decltype(test(std::declval<TT>())),pointer*>::value;
             };
             template<class TT>
-            struct has_move{
+            struct has_move_impl{
                 template<class U>
                 static decltype(std::declval<U>()
-                        .move(std::declval<A>(),std::declval<IF*>(),std::declval<void_ptr>()))* test(U&&);
+                        .move(std::declval<A>(),std::declval<pointer>(),std::declval<void_ptr>()))* test(U&&);
                 static std::false_type test(...);
-                static constexpr bool value = std::is_same<IF**,decltype(test(std::declval<TT>()))>::value;
+                static constexpr bool value = std::is_same<pointer*,decltype(test(std::declval<TT>()))>::value;
             };
 
+            using has_move_t = std::integral_constant<bool,has_move_impl<T>::value>;
+            using has_clone_t = std::integral_constant<bool,has_clone_impl<T>::value>;
+            // TODO(fecjanky): provide traits defaults for Allocator type, pointer and void_pointer types
             static constexpr bool value =
+                    std::is_same<IF,typename std::pointer_traits<pointer>::element_type>::value &&
                     std::is_nothrow_constructible<T>::value &&
                     std::is_nothrow_copy_constructible<T>::value &&
                     std::is_nothrow_copy_assignable<T>::value &&
-                    (has_clone<T>::value || (has_move<T>::value && is_noexcept_movable_t<T>::value));
+                    (has_clone_t::value || (has_move_t::value && is_noexcept_movable_t<T>::value));
         };
     }  //namespace poly_vector_impl
 
     template<class Policy,class Interface,class Allocator>
     using is_cloning_policy = std::integral_constant<bool,poly_vector_impl::is_cloning_policy_impl<Policy,Interface,Allocator>::value>;
 
-    template<typename CloningPolicy>
+    template<class Policy,class Interface,class Allocator>
     struct cloning_policy_traits{
-        using noexcept_movable = poly_vector_impl::is_noexcept_movable_t<CloningPolicy>;
+        static_assert(is_cloning_policy<Policy,Interface,Allocator>::value,"Policy is not a cloning policy");
+        using noexcept_movable = poly_vector_impl::is_noexcept_movable_t<Policy>;
+        using pointer = typename Policy::pointer;
+        using void_pointer = typename Policy::void_pointer;
+        using allocator_type = typename Policy::allocator_type;
+        static pointer move(const Policy& p, const allocator_type& a, pointer obj, void_pointer dest) noexcept(noexcept_movable::value)
+        {
+            using policy_impl = poly_vector_impl::is_cloning_policy_impl<Policy,Interface,Allocator>;
+            return move_impl(p,a,obj,dest,typename policy_impl::has_move_t{});
+        }
+    private:
+        static pointer move_impl(const Policy& p, const allocator_type& a, pointer obj, void_pointer dest, std::true_type) noexcept(noexcept_movable::value)
+        {
+            return p.move(a,obj,dest);
+        }
+        static pointer move_impl(const Policy& p, const allocator_type& a, pointer obj, void_pointer dest,std::false_type)
+        {
+            return p.clone(a,obj,dest);
+        }
+
     };
 
 
@@ -375,6 +400,7 @@ namespace estd
         using noexcept_movable = std::integral_constant<bool, nem>;
         using void_pointer = typename std::allocator_traits<Allocator>::void_pointer;
         using pointer = typename std::allocator_traits<Allocator>::pointer;
+        using allocator_type = Allocator;
 
         virtual_cloning_policy() = default;
         template<typename T>
@@ -402,7 +428,7 @@ namespace estd
         using noexcept_movable = std::false_type;
         using void_pointer = typename std::allocator_traits<Allocator>::void_pointer;
         using pointer = typename std::allocator_traits<Allocator>::pointer;
-
+        using allocator_type = Allocator;
         no_cloning_policy() = default;
         template<typename T>
         no_cloning_policy(T&& t) {};
@@ -425,6 +451,7 @@ namespace estd
         using void_pointer = typename std::allocator_traits<Allocator>::void_pointer;
         using pointer = typename std::allocator_traits<Allocator>::pointer;
         using const_pointer = typename std::allocator_traits<Allocator>::const_pointer;
+        using allocator_type = Allocator;
 
         delegate_cloning_policy() noexcept :cf{} {}
 
@@ -577,7 +604,8 @@ namespace estd
         using reverse_iterator = std::reverse_iterator<iterator>;
         using const_reverse_iterator = std::reverse_iterator<const_iterator>;
         using move_is_noexcept_t = std::is_nothrow_move_assignable<my_base>;
-        using interface_type_noexcept_movable = typename cloning_policy_traits<CloningPolicy>::noexcept_movable;
+        using cloning_policy_traits = cloning_policy_traits<CloningPolicy,interface_type,interface_allocator_type>;
+        using interface_type_noexcept_movable = typename cloning_policy_traits::noexcept_movable;
 
         static_assert(std::is_same<IF,interface_type>::value,
                       "Interface type must be a non-cv qualified user defined type");
@@ -597,7 +625,7 @@ namespace estd
             _free_storage{ _begin_storage }
         {
             resize_to_fit(other, other.size());
-            set_ptrs(other.poly_uninitialized_copy(begin_elem(), other.size()));
+            set_ptrs(other.poly_uninitialized_copy(base().get_allocator_ref(),begin_elem(), other.size()));
         }
 
         poly_vector(poly_vector&& other) : allocator_base<allocator_type>(std::move(other.base())),
@@ -615,7 +643,7 @@ namespace estd
         poly_vector& operator=(const poly_vector& rhs)
         {
             if (this != &rhs) {
-                return copy_assign_impl(rhs);
+                copy_assign_impl(rhs);
             }
             return *this;
         }
@@ -623,7 +651,7 @@ namespace estd
         poly_vector& operator=(poly_vector&& rhs) noexcept(move_is_noexcept_t::value)
         {
             if (this != &rhs) {
-                return move_assign_impl(std::move(rhs), move_is_noexcept_t{});
+                move_assign_impl(std::move(rhs), move_is_noexcept_t{});
             }
             return *this;
         }
@@ -738,10 +766,11 @@ namespace estd
 
         void reserve(size_type n, size_type avg_size)
         {
+            using copy = std::conditional_t<interface_type_noexcept_movable::value,
+                    std::false_type,std::true_type>;
             if (n <= capacities().first && avg_size <= capacities().second) return;
             if (n > max_size())throw std::length_error("poly_vector reserve size too big");
-            increase_storage(*this, *this, n, avg_size, alignof(std::max_align_t),
-                select_copy_method(interface_type_noexcept_movable{}));
+            increase_storage(*this, *this, n, avg_size, alignof(std::max_align_t),copy{});
         }
 
         void reserve(size_type n) {
@@ -842,9 +871,9 @@ namespace estd
             return static_cast<size_t>(static_cast<const_pointer_t>(e)-static_cast<const_pointer_t>(b));
         }
 
+        template<typename CopyOrMove>
         static void increase_storage(const poly_vector& src, poly_vector& dst,
-            size_t desired_size, size_t curr_elem_size = 0, size_t align = 1,
-            copy_mem_fun func = &poly_vector::poly_uninitialized_copy)
+            size_t desired_size, size_t curr_elem_size, size_t align ,CopyOrMove)
         {
             alloc_descr_t n{ false,std::make_pair(desired_size,std::size_t(0)) };
 
@@ -856,24 +885,27 @@ namespace estd
                 n = src.validate_layout(s.storage(), s.end_storage(), n, curr_elem_size, align);
                 if (!n.first) n.second.first *= 2;
             }
-            dst.obtain_storage(src, dst, std::move(s), n.second.first, func);
+            dst.obtain_storage(src, dst, std::move(s), n.second.first, CopyOrMove{});
         }
 
         static void obtain_storage(const poly_vector& src, poly_vector& dst, my_base&& a, size_t n,
-            copy_mem_fun func)
+            std::true_type)
         {
-            auto ret = (src.*func)(static_cast<elem_ptr_pointer>(a.storage()), n);
+            auto ret = src.poly_uninitialized_copy(dst.base().get_allocator_ref(),
+                                                   static_cast<elem_ptr_pointer>(a.storage()), n);
             dst.tidy();
             dst.base().swap(a);
             dst.set_ptrs(ret);
         }
 
-        static copy_mem_fun select_copy_method(std::true_type) {
-            return &poly_vector::poly_uninitialized_move;
-        }
-
-        static copy_mem_fun select_copy_method(std::false_type) {
-            return &poly_vector::poly_uninitialized_copy;
+        static void obtain_storage(const poly_vector& src, poly_vector& dst, my_base&& a, size_t n,
+           std::false_type) noexcept
+        {
+            auto ret = src.poly_uninitialized_move(dst.base().get_allocator_ref(),
+                                                   static_cast<elem_ptr_pointer>(a.storage()), n);
+            dst.tidy();
+            dst.base().swap(a);
+            dst.set_ptrs(ret);
         }
 
         my_base& base()noexcept
@@ -926,9 +958,8 @@ namespace estd
                 std::make_pair(new_size, n.second.second)), size, align);
         }
 
-        poly_copy_descr poly_uninitialized_copy(elem_ptr_pointer dst, size_t n) const
+        poly_copy_descr poly_uninitialized_copy(const allocator_type& a,elem_ptr_pointer dst, size_t n) const
         {
-            // TODO: investigate if dsts allocator is required here
             auto dst_begin = dst;
             const auto storage_begin = dst + n;
             void_pointer dst_storage = storage_begin;
@@ -936,7 +967,7 @@ namespace estd
                 for (auto elem = begin_elem(); elem != _free_elem; ++elem, ++dst) {
                     base().construct(static_cast<elem_ptr_pointer>(dst),*elem);
                     dst->ptr.first = next_aligned_storage(dst_storage, elem->align());
-                    dst->ptr.second = elem->policy().clone(base().get_allocator_ref(),elem->ptr.second, dst->ptr.first);
+                    dst->ptr.second = elem->policy().clone(a,elem->ptr.second, dst->ptr.first);
                     dst_storage = static_cast<pointer>(dst->ptr.first) + dst->size();
                 }
                 return std::make_tuple(dst, storage_begin, dst_storage);
@@ -951,16 +982,16 @@ namespace estd
             }
         }
 
-        poly_copy_descr poly_uninitialized_move(elem_ptr_pointer dst, size_t n) const noexcept
+        poly_copy_descr poly_uninitialized_move(const allocator_type& a,elem_ptr_pointer dst, size_t n) const noexcept
         {
-            // TODO: investigate if dsts allocator is required here
             auto dst_begin = dst;
             const auto storage_begin = dst + n;
             void_pointer dst_storage = storage_begin;
             for (auto elem = begin_elem(); elem != _free_elem; ++elem, ++dst) {
                 base().construct(static_cast<elem_ptr_pointer>(dst),*elem);
                 dst->ptr.first = next_aligned_storage(dst_storage, elem->align());
-                dst->ptr.second =  elem->policy().move(base().get_allocator_ref(),elem->ptr.second, dst->ptr.first);
+                dst->ptr.second =
+                        elem->policy().move(a,elem->ptr.second, dst->ptr.first);
                 dst_storage = static_cast<pointer>(dst->ptr.first) + dst->size();
             }
             return std::make_tuple(dst, storage_begin, dst_storage);
@@ -968,13 +999,15 @@ namespace estd
 
         poly_vector& copy_assign_impl(const poly_vector& rhs)
         {
-            return copy_move_helper(rhs, &poly_vector::poly_uninitialized_copy);
+            base().get_allocator_ref() = rhs.base().get_allocator_ref();
+            increase_storage(rhs, *this, rhs.size(), 0, 1, std::true_type{});
+            return *this;
         }
 
         poly_vector& move_assign_impl(poly_vector&& rhs, std::true_type) noexcept
         {
             using std::swap;
-            base() = std::move(rhs.base());
+            base().swap(rhs.base());
             swap_ptrs(std::move(rhs));
             return *this;
         }
@@ -985,22 +1018,7 @@ namespace estd
                 return move_assign_impl(std::move(rhs), std::true_type{});
             }
             else
-                return copy_move_helper(std::move(rhs), &poly_vector::poly_uninitialized_move);
-        }
-
-        // TODO(fecjanky):separete this to avoid having pointer to members
-        template<typename T>
-        poly_vector& copy_move_helper(T&& rhs, copy_mem_fun func)
-        {
-            tidy();
-            if (std::is_lvalue_reference<T&&>::value) {
-                base().get_allocator_ref() = rhs.base().get_allocator_ref();
-            }
-            else {
-                base().get_allocator_ref() = std::move(rhs.base().get_allocator_ref());
-            }
-            increase_storage(rhs, *this, rhs.size(), 0, 1, func);
-            return *this;
+                return copy_assign_impl(rhs);
         }
 
         void tidy() noexcept
@@ -1048,25 +1066,20 @@ namespace estd
             using TT = std::decay_t<T>;
             constexpr auto s = sizeof(TT);
             constexpr auto a = alignof(TT);
-            using select = std::conditional_t<std::is_lvalue_reference<T&&>::value,
-                std::false_type,
-                interface_type_noexcept_movable
-            >;
             //////////////////////////////////////////
             poly_vector v(base().get_allocator_ref());
             const auto newsize = std::max(size() * 2, size_t(1));
             v.resize_to_fit(*this, newsize, s, a);
-            // move if rvalue ref and cloning policy move is noexcept
-            push_back_new_elem_w_storage_increase_copy(v, select{});
+            push_back_new_elem_w_storage_increase_copy(v, interface_type_noexcept_movable{});
             v.push_back_new_elem(std::forward<T>(obj));
             this->swap(v);
         }
 
         void push_back_new_elem_w_storage_increase_copy(poly_vector& v, std::true_type) {
-            v.set_ptrs(poly_uninitialized_move(v.begin_elem(), v.capacity()));
+            v.set_ptrs(poly_uninitialized_move(base().get_allocator_ref(), v.begin_elem(), v.capacity()));
         }
         void push_back_new_elem_w_storage_increase_copy(poly_vector& v, std::false_type) {
-            v.set_ptrs(poly_uninitialized_copy(v.begin_elem(), v.capacity()));
+            v.set_ptrs(poly_uninitialized_copy(base().get_allocator_ref(),v.begin_elem(), v.capacity()));
         }
 
         void resize_to_fit(const poly_vector& v,std::size_t new_size,std::size_t size = 0,std::size_t alignment = 1){
