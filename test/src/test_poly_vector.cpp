@@ -68,8 +68,24 @@ TEST(poly_vector_basic_tests, is_not_copyable_with_no_cloning_policy)
     v.reserve(2, std::max(sizeof(Impl1),sizeof(Impl2)));
     v.push_back(Impl1(3.14));
     v.push_back(Impl2());
-    EXPECT_THROW(v.push_back(Impl2()), std::exception);
+    EXPECT_THROW(v.push_back(Impl2()), estd::no_cloning_exception);
 }
+
+TEST(poly_vector_basic_tests, no_cloning_policy_gives_e_what)
+{
+    bool throwed = false;
+    estd::poly_vector<Interface, std::allocator<Interface>, estd::no_cloning_policy<Interface>> v{};
+    try {
+        v.reserve(1,sizeof(Impl1));
+        v.push_back(Impl1(3.14));
+        v.push_back(Impl1(3.14));
+    }catch(const estd::no_cloning_exception& e){
+        std::string emsg = e.what();
+        throwed = emsg.find("no_cloning_policy") != std::string::npos;
+    }
+    EXPECT_TRUE(throwed);
+}
+
 
 template<class CloningPolicy>
 class poly_vector_modifiers_test : public ::testing::Test {

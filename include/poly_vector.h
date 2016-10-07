@@ -416,16 +416,17 @@ namespace estd
         }
     };
 
+    struct no_cloning_exception : public std::exception
+    {
+        const char* what() const noexcept override
+        {
+            return "cloning attempt with no_cloning_policy";
+        }
+    };
+
     template<class IF,class Allocator = std::allocator<IF> >
     struct no_cloning_policy
     {
-        struct exception : public std::exception
-        {
-            const char* what() const noexcept override
-            {
-                return "cloning attempt with no_cloning_policy";
-            }
-        };
         using noexcept_movable = std::false_type;
         using void_pointer = typename std::allocator_traits<Allocator>::void_pointer;
         using pointer = typename std::allocator_traits<Allocator>::pointer;
@@ -435,7 +436,7 @@ namespace estd
         no_cloning_policy(T&& t) {};
         pointer clone(const Allocator& a,pointer obj, void_pointer dest) const
         {
-            throw exception{};
+            throw no_cloning_exception{};
         }
     };
 
