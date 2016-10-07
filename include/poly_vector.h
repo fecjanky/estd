@@ -21,6 +21,7 @@
 #define POLY_VECTOR_H_
 
 #include <memory>
+#include <cstddef>
 #include <cstdint>
 #include <utility>
 #include <tuple>
@@ -135,7 +136,7 @@ namespace estd
         using allocator_type = typename Policy::allocator_type;
         static pointer move(const Policy& p, const allocator_type& a, pointer obj, void_pointer dest) noexcept(noexcept_movable::value)
         {
-            using policy_impl = poly_vector_impl::is_cloning_policy_impl<Policy,Interface,Allocator>;
+            using policy_impl = ::estd::poly_vector_impl::is_cloning_policy_impl<Policy,Interface,Allocator>;
             return move_impl(p,a,obj,dest,typename policy_impl::has_move_t{});
         }
     private:
@@ -604,7 +605,7 @@ namespace estd
         using reverse_iterator = std::reverse_iterator<iterator>;
         using const_reverse_iterator = std::reverse_iterator<const_iterator>;
         using move_is_noexcept_t = std::is_nothrow_move_assignable<my_base>;
-        using cloning_policy_traits = cloning_policy_traits<CloningPolicy,interface_type,interface_allocator_type>;
+        using cloning_policy_traits = ::estd::cloning_policy_traits<CloningPolicy,interface_type,interface_allocator_type>;
         using interface_type_noexcept_movable = typename cloning_policy_traits::noexcept_movable;
 
         static_assert(std::is_same<IF,interface_type>::value,
