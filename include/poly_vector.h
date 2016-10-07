@@ -648,7 +648,7 @@ namespace estd
         void pop_back()noexcept
         {
             base().destroy(std::addressof(back()));
-            _free_storage = reinterpret_cast<uint8_t*>(_free_storage) - begin_elem()[size() - 1].size();
+            _free_storage = static_cast<pointer>(_free_storage) - begin_elem()[size() - 1].size();
             base().destroy(std::addressof(begin_elem()[size() - 1]));
             _free_elem = &begin_elem()[size() - 1];
         }
@@ -817,20 +817,21 @@ namespace estd
 
         static void_pointer next_aligned_storage(void_pointer p, size_t align) noexcept
         {
-            auto fs = reinterpret_cast<uintptr_t>(static_cast<void*>(p));
-            return static_cast<void_pointer>(reinterpret_cast<void*>(((fs + align - 1) / align)*align));
+            auto v = static_cast<pointer>(p) - static_cast<pointer>(nullptr);
+            auto a = ((v + align - 1)/align)*align - v;
+            return static_cast<pointer>(p) + a;
         }
 
-        static void* next_storage_for_object(void* s, size_t size, size_t align) noexcept
+        static void* next_storage_for_object(void_pointer s, size_t size, size_t align) noexcept
         {
             s = next_aligned_storage(s, align);
-            s = reinterpret_cast<uint8_t*>(s) + size;
+            s = static_cast<pointer>(s) + size;
             return s;
         }
 
-        static size_t estimate_excess(void* s, void* e, alloc_descr_t n, size_t avg) noexcept
+        static size_t estimate_excess(void_pointer s, void_pointer e, alloc_descr_t n, size_t avg) noexcept
         {
-            auto es = storage_size(reinterpret_cast<uint8_t*>(s) + n.second.first*avg, e);
+            auto es = storage_size(static_cast<pointer>(s) + n.second.first*avg, e);
             auto en = (es + (sizeof(elem_ptr) + avg) - 1) / (sizeof(elem_ptr) + avg);
             return std::max(size_t(1), en);
         }
@@ -861,7 +862,7 @@ namespace estd
         static void obtain_storage(const poly_vector& src, poly_vector& dst, my_base&& a, size_t n,
             copy_mem_fun func)
         {
-            auto ret = (src.*func)(reinterpret_cast<elem_ptr*>(a.storage()), n);
+            auto ret = (src.*func)(static_cast<elem_ptr_pointer>(a.storage()), n);
             dst.tidy();
             dst.base().swap(a);
             dst.set_ptrs(ret);
@@ -888,22 +889,22 @@ namespace estd
             size_t desired_size, size_t curr_elem_size, size_t align) const noexcept
         {
             const auto s = new_avg_obj_size(std::max(curr_elem_size, align), align);
-            auto begin = static_cast<uint8_t*>(nullptr);
+            auto begin = static_cast<pointer>(nullptr);
             const auto first_align = !empty() ? begin_elem()->align() : size_t(1);
-            auto end = reinterpret_cast<uint8_t*>(
+            auto end = static_cast<pointer>(
                 next_aligned_storage(begin + desired_size * sizeof(elem_ptr), first_align));
             end += storage_size(_begin_storage, this->end_storage());
-            end = reinterpret_cast<uint8_t*>(next_aligned_storage(end, align));
+            end = static_cast<pointer>(next_aligned_storage(end, align));
             end += (desired_size - size())*s;
             return std::make_pair(desired_size, storage_size(begin, end));
         }
 
-        alloc_descr_t validate_layout(void* const start, void* const end, const alloc_descr_t n,
+        alloc_descr_t validate_layout(void_pointer const start, void_pointer const end, const alloc_descr_t n,
             const size_t size, const size_t align) const noexcept
         {
-            uint8_t* const new_begin_storage =
-                reinterpret_cast<uint8_t*>(start) + n.second.first * sizeof(elem_ptr);
-            void* new_end_storage = new_begin_storage;
+            pointer const new_begin_storage =
+                    static_cast<pointer>(start) + n.second.first * sizeof(elem_ptr);
+            void_pointer new_end_storage = new_begin_storage;
             for (auto p = begin_elem(); p != end_elem() && new_end_storage <= end; ++p) {
                 new_end_storage = next_storage_for_object(new_end_storage, p->size(), p->align());
             }
@@ -925,7 +926,7 @@ namespace estd
                 std::make_pair(new_size, n.second.second)), size, align);
         }
 
-        poly_copy_descr poly_uninitialized_copy(elem_ptr* dst, size_t n) const
+        poly_copy_descr poly_uninitialized_copy(elem_ptr_pointer dst, size_t n) const
         {
             // TODO: investigate if dsts allocator is required here
             auto dst_begin = dst;
@@ -933,10 +934,10 @@ namespace estd
             void_pointer dst_storage = storage_begin;
             try {
                 for (auto elem = begin_elem(); elem != _free_elem; ++elem, ++dst) {
-                    base().construct(static_cast<elem_ptr*>(dst),*elem);
+                    base().construct(static_cast<elem_ptr_pointer>(dst),*elem);
                     dst->ptr.first = next_aligned_storage(dst_storage, elem->align());
                     dst->ptr.second = elem->policy().clone(base().get_allocator_ref(),elem->ptr.second, dst->ptr.first);
-                    dst_storage = reinterpret_cast<uint8_t*>(dst->ptr.first) + dst->size();
+                    dst_storage = static_cast<pointer>(dst->ptr.first) + dst->size();
                 }
                 return std::make_tuple(dst, storage_begin, dst_storage);
             } catch (...) {
@@ -950,17 +951,17 @@ namespace estd
             }
         }
 
-        poly_copy_descr poly_uninitialized_move(elem_ptr* dst, size_t n) const noexcept
+        poly_copy_descr poly_uninitialized_move(elem_ptr_pointer dst, size_t n) const noexcept
         {
             // TODO: investigate if dsts allocator is required here
             auto dst_begin = dst;
             const auto storage_begin = dst + n;
             void_pointer dst_storage = storage_begin;
             for (auto elem = begin_elem(); elem != _free_elem; ++elem, ++dst) {
-                base().construct(static_cast<elem_ptr*>(dst),*elem);
+                base().construct(static_cast<elem_ptr_pointer>(dst),*elem);
                 dst->ptr.first = next_aligned_storage(dst_storage, elem->align());
                 dst->ptr.second =  elem->policy().move(base().get_allocator_ref(),elem->ptr.second, dst->ptr.first);
-                dst_storage = reinterpret_cast<uint8_t*>(dst->ptr.first) + dst->size();
+                dst_storage = static_cast<pointer>(dst->ptr.first) + dst->size();
             }
             return std::make_tuple(dst, storage_begin, dst_storage);
         }
@@ -987,11 +988,12 @@ namespace estd
                 return copy_move_helper(std::move(rhs), &poly_vector::poly_uninitialized_move);
         }
 
+        // TODO(fecjanky):separete this to avoid having pointer to members
         template<typename T>
         poly_vector& copy_move_helper(T&& rhs, copy_mem_fun func)
         {
             tidy();
-            if (std::is_reference<T>::value) {
+            if (std::is_lvalue_reference<T&&>::value) {
                 base().get_allocator_ref() = rhs.base().get_allocator_ref();
             }
             else {
@@ -1029,13 +1031,14 @@ namespace estd
             using TT = std::decay_t<T>;
             constexpr auto s = sizeof(TT);
             constexpr auto a = alignof(TT);
-            auto nas = next_aligned_storage(a);
+            using traits = typename  allocator_traits ::template rebind_traits <TT>;
 
             assert(can_construct_new_elem(s, a));
 
+            auto nas = next_aligned_storage(a);
             _free_elem = base().construct (_free_elem,std::forward<T>(obj),
-                nas, base().construct(static_cast<TT*>(nas),std::forward<T>(obj)));
-            _free_storage = reinterpret_cast<uint8_t*>(_free_elem->ptr.first) + s;
+                nas, base().construct(static_cast<typename traits::pointer>(nas),std::forward<T>(obj)));
+            _free_storage = static_cast<pointer>(_free_elem->ptr.first) + s;
             ++_free_elem;
         }
 
@@ -1079,7 +1082,7 @@ namespace estd
 
         bool can_construct_new_elem(size_t s, size_t align) noexcept
         {
-            auto free = reinterpret_cast<uint8_t*>(next_aligned_storage(_free_storage, align));
+            auto free = static_cast<pointer>(next_aligned_storage(_free_storage, align));
             return free + s <= this->end_storage();
         }
 
@@ -1102,12 +1105,12 @@ namespace estd
 
         elem_ptr_pointer begin_elem()noexcept
         {
-            return reinterpret_cast<elem_ptr_pointer>(this->storage());
+            return static_cast<elem_ptr_pointer>(this->storage());
         }
 
         elem_ptr_pointer end_elem()noexcept
         {
-            return reinterpret_cast<elem_ptr_pointer>(_free_elem);
+            return static_cast<elem_ptr_pointer>(_free_elem);
         }
 
         elem_ptr_const_pointer begin_elem()const noexcept
@@ -1117,7 +1120,7 @@ namespace estd
 
         elem_ptr_const_pointer end_elem()const noexcept
         {
-            return reinterpret_cast<elem_ptr_const_pointer>(_free_elem);
+            return static_cast<elem_ptr_const_pointer>(_free_elem);
         }
         ////////////////////////////
         // Members
