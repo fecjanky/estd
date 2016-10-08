@@ -33,7 +33,6 @@
 #include <cmath>
 #include <type_traits>
 #include <iterator>
-#include "memory.h"
 
 namespace estd
 {
@@ -65,6 +64,38 @@ namespace estd
 
         template<typename T>
         struct TD;
+
+        template<typename A, bool b>
+        struct select_always_eq_trait {
+            using type = typename A::is_always_equal;
+        };
+
+        template<typename A>
+        struct select_always_eq_trait<A,false> {
+            using type = typename std::is_empty<A>::type;
+        };
+
+        // until c++17...
+        template<typename A>
+        struct allocator_is_always_equal {
+        private:
+            template<typename AA>
+            static std::true_type has_always_equal_test(const AA&,typename AA::is_always_equal*);
+            static std::false_type has_always_equal_test(...);
+            static constexpr bool has_always_equal =
+                    std::is_same<
+                            std::true_type,
+                            decltype(has_always_equal_test(std::declval<A>(),nullptr))
+                    >::value;
+        public:
+            using type = typename select_always_eq_trait<A, has_always_equal>::type;
+            static constexpr bool value = type::value;
+        };
+
+
+        template<typename A>
+        using allocator_is_always_equal_t =
+        typename allocator_is_always_equal<A>::type;
 
 
         template<class TT>
@@ -161,7 +192,7 @@ namespace estd
         using propagate_on_container_copy_assignment = typename allocator_traits::propagate_on_container_copy_assignment;
         using propagate_on_container_swap = typename allocator_traits::propagate_on_container_swap;
         using propagate_on_container_move_assignment = typename allocator_traits::propagate_on_container_move_assignment;
-        using allocator_is_always_equal = ::estd::impl::allocator_is_always_equal_t<Allocator>;
+        using allocator_is_always_equal = poly_vector_impl::allocator_is_always_equal_t<Allocator>;
         static_assert(std::is_same<value_type, uint8_t>::value, "requires a byte allocator");
         using allocator_type = Allocator;
         using void_pointer = typename allocator_traits::void_pointer;
@@ -259,7 +290,7 @@ namespace estd
             if (propagate_on_container_swap::value) {
                 swap(get_allocator_ref(), x.get_allocator_ref());
             }
-            else if (!::estd::impl::allocator_is_always_equal_t<Allocator>::value &&
+            else if (!allocator_is_always_equal::value &&
                      get_allocator_ref() != x.get_allocator_ref()) {
                 // Undefined behavior
                 assert(0);
