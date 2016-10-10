@@ -20,7 +20,7 @@ struct Interface {
 
 class Implementation1 : public Interface {
 public:
-    Implementation1(int seed) : _seed{ seed }, _current{} {}
+    Implementation1(int seed) : _seed{ seed }, _current{} ,_pad{}{}
 
     void doYourThing() override
     {
@@ -34,12 +34,13 @@ public:
 private:
     int _seed;
     int _current;
+    int _pad[14];
 };
 
 class Implementation2 : public Interface {
 public:
 
-    Implementation2(double op1, double op2) : _op1{ op1 }, _op2{ op2 } {}
+    Implementation2(double op1, double op2) : _op1{ op1 }, _op2{ op2 } ,_pad{}{}
 
     void doYourThing() override
     {
@@ -53,17 +54,47 @@ public:
 private:
     double _op1;
     double _op2;
+    int _pad[12];
 };
 
 
+std::vector<std::unique_ptr<char[]>>  random_allocation(){
+    // simulating heap fragmentation
+    std::random_device rd;
+    std::uniform_int_distribution<int>dist_size(2048, 4096);
+    std::uniform_int_distribution<int>dist_num(256, 512);
+    std::vector<std::unique_ptr<char[]>> tempvec;
+    auto num = dist_num(rd);
+    for(auto i = 0;i <num;++i){
+        tempvec.push_back(std::make_unique<char[]>(dist_size(rd)));
+    }
+    return tempvec;
+}
+
 struct PolyVectorCreator {
     template<class T>
-    static const T& create(const T& o)noexcept { return o; }
+    static const T& create(const T& o)noexcept {
+        auto v = random_allocation();
+        if(v.size()>0)
+            return o;
+        else throw std::runtime_error("random alloc failed");
+
+
+    }
 };
 
 struct UniquePtrCreator {
     template<class T>
-    static std::unique_ptr<Interface> create(const T& o)noexcept { return std::make_unique<T>(o); }
+    static std::unique_ptr<Interface> create(const T& o)noexcept {
+        std::unique_ptr<T> p;
+        {
+            auto v = random_allocation();
+            if (!v.empty()) {
+                p = std::make_unique<T>(o);
+            }
+        }
+        return p;
+    }
 };
 
 template<class VectorT,class CreateT>
@@ -73,8 +104,9 @@ struct InterfaceCreator {
     {
     public:
         void operator()(VectorT& v) {
-            auto param = std::uniform_int_distribution<int>(-100, 100)(std::random_device());
-            v.push_back(CreateT::create(Implementation1(param)));
+            std::random_device rd;
+            std::uniform_int_distribution<int>dist(-100, 100);
+            v.push_back(CreateT::create(Implementation1(dist(rd))));
         }
     private:
     };

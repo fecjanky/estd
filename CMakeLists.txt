@@ -11,3 +11,4 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
 add_subdirectory(googletest/googlemock)
 add_subdirectory(test)
+add_subdirectory(benchmark)
