@@ -541,7 +541,8 @@ namespace estd
     class poly_vector_iterator
     {
     public:
-        using elem = poly_vector_elem_ptr<Allocator, CP>;
+        using p_elem = poly_vector_elem_ptr<Allocator, CP>;
+        using elem = std::conditional_t<std::is_const<IF>::value,std::add_const_t<p_elem>,p_elem>;
         using void_ptr = typename std::allocator_traits<Allocator>::void_pointer;
         using pointer = typename std::allocator_traits<Allocator>::pointer ;
         using const_pointer = typename std::allocator_traits<Allocator>::const_pointer;
@@ -637,7 +638,7 @@ namespace estd
         using const_void_pointer = typename my_base::const_void_pointer;
         using size_type = std::size_t;
         using iterator = poly_vector_iterator<interface_type ,interface_allocator_type, CloningPolicy>;
-        using const_iterator = poly_vector_iterator<const interface_type,const interface_allocator_type, const CloningPolicy>;
+        using const_iterator = poly_vector_iterator<const interface_type,interface_allocator_type,CloningPolicy>;
         using reverse_iterator = std::reverse_iterator<iterator>;
         using const_reverse_iterator = std::reverse_iterator<const_iterator>;
         using move_is_noexcept_t = std::is_nothrow_move_assignable<my_base>;
@@ -1360,10 +1361,10 @@ namespace estd
     {
         alloc_descr_t n{ false,std::make_pair(new_size,std::size_t(0)) };
         while (!n.first) {
+            this->reserve(n.second.first, v.new_avg_obj_size(size, alignment));
             n = v.validate_layout(this->storage(), this->end_storage(), n, size, alignment);
             if (!n.first) {
-                this->reserve(n.second.first*2,v.new_avg_obj_size(size,alignment));
-                n.second.first = this->capacity();
+                n.second.first *=2;
             }
         }
     }

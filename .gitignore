@@ -77,3 +77,5 @@
 /estd/Debug/estd.tlog/unsuccessfulbuild
 /estd/Debug/test_poly_vector.obj
 /estd/Debug/estd.tlog/link.4220.delete.1.tlog
+/benchmark/Debug/*
+/benchmark/Release/*
