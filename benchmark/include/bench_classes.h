@@ -93,7 +93,7 @@ struct UniquePtrCreator {
                 p = std::make_unique<T>(o);
             }
         }
-        return p;
+        return std::unique_ptr<Interface>(p.release());
     }
 };
 
