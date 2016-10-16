@@ -173,9 +173,9 @@ namespace estd
             using pointer = typename allocator_traits::pointer ;
             using const_pointer = typename allocator_traits::const_pointer;
             //////////////////////////////////////////////
-            allocator_base(const Allocator& a = Allocator()) : Allocator(a), _storage{}, _end_storage{} {}
+            explicit allocator_base(const Allocator& a = Allocator()) : Allocator(a), _storage{}, _end_storage{} {}
 
-            allocator_base(size_t n, const Allocator& a = Allocator()) : Allocator(a), _storage{}, _end_storage{}
+            explicit allocator_base(size_t n, const Allocator& a = Allocator()) : Allocator(a), _storage{}, _end_storage{}
             {
                 auto s = get_allocator_ref().allocate(n);
                 _storage = s;
@@ -376,7 +376,7 @@ namespace estd
 
 
     template<class Allocator,class CloningPolicy>
-    struct alignas(std::max_align_t) poly_vector_elem_ptr : private CloningPolicy
+    struct alignas(alignof(std::max_align_t)) poly_vector_elem_ptr : private CloningPolicy
     {
         using IF = typename  std::allocator_traits<Allocator>::value_type;
         using void_pointer = typename std::allocator_traits<Allocator>::void_pointer;
@@ -721,61 +721,40 @@ namespace estd
         ////////////////////////////
         allocator_type  get_allocator()     const   noexcept;
     private:
-        using elem_ptr = poly_vector_elem_ptr<typename allocator_traits::template rebind_alloc<interface_type>, CloningPolicy>;
-        using elem_ptr_pointer = typename allocator_traits::template rebind_traits<elem_ptr>::pointer;
-        using elem_ptr_const_pointer = typename allocator_traits::template rebind_traits<elem_ptr>::const_pointer;
-        using alloc_descr_t = std::pair<bool, std::pair<size_t, size_t>>;
-        using poly_copy_descr = std::tuple<elem_ptr_pointer , elem_ptr_pointer, void_pointer >;
-        typedef poly_copy_descr(poly_vector::*copy_mem_fun)(elem_ptr_pointer , size_t) const;
+        using elem_ptr                  = poly_vector_elem_ptr<typename allocator_traits::template rebind_alloc<interface_type>, CloningPolicy>;
+        using elem_ptr_pointer          = typename allocator_traits::template rebind_traits<elem_ptr>::pointer;
+        using elem_ptr_const_pointer    = typename allocator_traits::template rebind_traits<elem_ptr>::const_pointer;
+        using poly_copy_descr           = std::tuple<elem_ptr_pointer , elem_ptr_pointer, void_pointer >;
 
-        static alloc_descr_t    make_alloc_descr(bool b, size_t size, size_t align) noexcept;
-        static void_pointer     next_aligned_storage(void_pointer p, size_t align)  noexcept;
-        static void_pointer     next_storage_for_object(void_pointer s, size_t size, size_t align)  noexcept;
-        static size_t           estimate_excess(void_pointer s, void_pointer e, alloc_descr_t n, size_t avg)    noexcept;
-        static size_t           storage_size(const_void_pointer b, const_void_pointer e)    noexcept;
-
-        template<typename CopyOrMove>
-        static void increase_storage(
-                const poly_vector& src,
-                poly_vector& dst,
-                size_t desired_size,
-                size_t curr_elem_size,
-                size_t align ,
-                CopyOrMove);
-
-        static void obtain_storage(
-                const poly_vector& src,
-                poly_vector& dst,
-                my_base&& a,
-                size_t n,
-                std::true_type);
-
-        static void obtain_storage(
-                const poly_vector& src,
-                poly_vector& dst,
-                my_base&& a,
-                size_t n,
-                std::false_type) noexcept;
-
-        std::pair<size_type, size_type> calc_increased_storage_size(
-            size_t desired_size,
-            size_t curr_elem_size,
-            size_t align) const noexcept;
-
-        alloc_descr_t           validate_layout(
-                void_pointer const start,
-                void_pointer const end,
-                const alloc_descr_t n,
-                const size_t size,
-                const size_t align) const noexcept;
         ////////////////////////
         /// Storage management helper
         ////////////////////////
-        static size_t max_alignment(elem_ptr_const_pointer begin, elem_ptr_const_pointer end) noexcept;
-        static size_t max_alignment(elem_ptr_const_pointer begin1, elem_ptr_const_pointer end1, elem_ptr_const_pointer begin2, elem_ptr_const_pointer end2) noexcept;
-        size_t max_alignment() const noexcept;
-        size_t max_alignment(size_t new_alignment) const noexcept;
-        size_t calculate_storage_size(size_t new_size, size_t new_alignment) const noexcept;
+        static void_pointer     next_aligned_storage(void_pointer p, size_t align)  noexcept;
+        static void_pointer     next_storage_for_object(void_pointer s, size_t size, size_t align)      noexcept;
+        static size_t           storage_size(const_void_pointer b, const_void_pointer e)        noexcept;
+        static size_t           max_alignment(elem_ptr_const_pointer begin, elem_ptr_const_pointer end)     noexcept;
+        static size_t           max_alignment(elem_ptr_const_pointer begin1, elem_ptr_const_pointer end1, elem_ptr_const_pointer begin2, elem_ptr_const_pointer end2)   noexcept;
+        size_t                  max_alignment()     const   noexcept;
+        size_t                  max_alignment(size_t new_alignment)     const   noexcept;
+        size_t                  calculate_storage_size(size_t new_size,size_t new_elem_size, size_t new_elem_alignment) const noexcept;
+
+        template<typename CopyOrMove>
+        void increase_storage(
+            size_t desired_size,
+            size_t curr_elem_size,
+            size_t align,
+            CopyOrMove);
+
+        void obtain_storage(
+            my_base&& a,
+            size_t n,
+            std::true_type);
+
+        void obtain_storage(
+            my_base&& a,
+            size_t n,
+            std::false_type) noexcept;
+
         ////////////////////////
         my_base&                base()  noexcept;
         const my_base&          base()  const   noexcept;
@@ -784,7 +763,8 @@ namespace estd
         poly_vector&            copy_assign_impl(const poly_vector& rhs);
         poly_vector&            move_assign_impl(poly_vector&& rhs, std::true_type) noexcept;
         poly_vector&            move_assign_impl(poly_vector&& rhs, std::false_type);
-        void                    tidy() noexcept;
+        void                    tidy()  noexcept;
+        void                    init_ptrs(size_t n)     noexcept;
         void                    set_ptrs(poly_copy_descr p);
         void                    swap_ptrs(poly_vector&& rhs);
         template<class T>
@@ -793,10 +773,8 @@ namespace estd
         void                    push_back_new_elem_w_storage_increase(T&& obj);
         void                    push_back_new_elem_w_storage_increase_copy(poly_vector& v, std::true_type);
         void                    push_back_new_elem_w_storage_increase_copy(poly_vector& v, std::false_type);
-        void                    resize_to_fit(const poly_vector& v,std::size_t new_size,std::size_t size = 0,std::size_t alignment = 1);
         bool                    can_construct_new_elem(size_t s, size_t align)  noexcept;
         void_pointer            next_aligned_storage(size_t align)  const   noexcept;
-        size_t                  new_avg_obj_size(size_t new_object_size, size_t align)  const   noexcept;
         size_t                  avg_obj_size(size_t align = 1)  const   noexcept;
         elem_ptr_pointer        begin_elem()    noexcept;
         elem_ptr_pointer        end_elem()      noexcept;
@@ -836,7 +814,6 @@ namespace estd
                                             _free_elem{ begin_elem() }, _begin_storage{ begin_elem() + other.capacity() },
                                             _free_storage{ _begin_storage }
     {
-        resize_to_fit(other, other.size());
         set_ptrs(other.poly_uninitialized_copy(base().get_allocator_ref(),begin_elem(), other.size()));
     }
 
@@ -1010,7 +987,7 @@ namespace estd
                 std::false_type,std::true_type>;
         if (n <= capacities().first && avg_size <= capacities().second) return;
         if (n > max_size())throw std::length_error("poly_vector reserve size too big");
-        increase_storage(*this, *this, n, avg_size, alignof(std::max_align_t),copy{});
+        increase_storage(n, avg_size, alignof(std::max_align_t),copy{});
     }
 
     template<class I,class A,class C>
@@ -1091,13 +1068,6 @@ namespace estd
         return my_base::get_allocator_ref();
     }
 
-
-    template<class I,class A,class C>
-    inline auto poly_vector<I,A,C>::make_alloc_descr(bool b, size_t size, size_t align)noexcept -> alloc_descr_t
-    {
-        return std::make_pair(b, std::make_pair(size, align));
-    }
-
     template<class I,class A,class C>
     inline auto poly_vector<I,A,C>::next_aligned_storage(void_pointer p, size_t align) noexcept -> void_pointer
     {
@@ -1115,14 +1085,6 @@ namespace estd
     }
 
     template<class I,class A,class C>
-    inline size_t poly_vector<I,A,C>::estimate_excess(void_pointer s, void_pointer e, alloc_descr_t n, size_t avg) noexcept
-    {
-        auto es = storage_size(static_cast<pointer>(s) + n.second.first*avg, e);
-        auto en = (es + (sizeof(elem_ptr) + avg) - 1) / (sizeof(elem_ptr) + avg);
-        return std::max(size_t(1), en);
-    }
-
-    template<class I,class A,class C>
     inline size_t poly_vector<I,A,C>::storage_size(const_void_pointer b, const_void_pointer e) noexcept
     {
         using const_pointer_t = typename allocator_traits::const_pointer;
@@ -1131,44 +1093,34 @@ namespace estd
 
     template<class I,class A,class C>
     template<typename CopyOrMove>
-    inline void poly_vector<I,A,C>::increase_storage(const poly_vector& src, poly_vector& dst,
-                                 size_t desired_size, size_t curr_elem_size, size_t align ,CopyOrMove)
+    inline void poly_vector<I,A,C>::increase_storage(size_t desired_size, size_t curr_elem_size, size_t align ,CopyOrMove)
     {
-        alloc_descr_t n{ false,std::make_pair(desired_size,std::size_t(0)) };
-
-        my_base s{};
-        while (!n.first) {
-            n.second = src.calc_increased_storage_size(n.second.first, curr_elem_size, align);
-            my_base a(n.second.second, dst.get_allocator_ref());
-            s.swap(a);
-            n = src.validate_layout(s.storage(), s.end_storage(), n, curr_elem_size, align);
-            if (!n.first) n.second.first *= 2;
-        }
-        dst.obtain_storage(src, dst, std::move(s), n.second.first, CopyOrMove{});
+        my_base s{calculate_storage_size(desired_size,curr_elem_size,align)};
+        obtain_storage(std::move(s), desired_size, CopyOrMove{});
     }
 
 
 
     template<class I,class A,class C>
-    inline void poly_vector<I,A,C>::obtain_storage(const poly_vector& src, poly_vector& dst, my_base&& a, size_t n,
+    inline void poly_vector<I,A,C>::obtain_storage(my_base&& a, size_t n,
                                std::true_type)
     {
-        auto ret = src.poly_uninitialized_copy(dst.base().get_allocator_ref(),
+        auto ret = poly_uninitialized_copy(a.get_allocator_ref(),
                                                static_cast<elem_ptr_pointer>(a.storage()), n);
-        dst.tidy();
-        dst.base().swap(a);
-        dst.set_ptrs(ret);
+        tidy();
+        base().swap(a);
+        set_ptrs(ret);
     }
 
     template<class I,class A,class C>
-    inline void poly_vector<I,A,C>::obtain_storage(const poly_vector& src, poly_vector& dst, my_base&& a, size_t n,
+    inline void poly_vector<I,A,C>::obtain_storage(my_base&& a, size_t n,
                                std::false_type) noexcept
     {
-        auto ret = src.poly_uninitialized_move(dst.base().get_allocator_ref(),
+        auto ret = poly_uninitialized_move(a.get_allocator_ref(),
                                                static_cast<elem_ptr_pointer>(a.storage()), n);
-        dst.tidy();
-        dst.base().swap(a);
-        dst.set_ptrs(ret);
+        tidy();
+        base().swap(a);
+        set_ptrs(ret);
     }
 
     template<class I,class A,class C>
@@ -1181,49 +1133,6 @@ namespace estd
     inline auto poly_vector<I,A,C>::base()const noexcept -> const my_base &
     {
         return *this;
-    }
-
-    template<class I,class A,class C>
-    inline auto poly_vector<I,A,C>::calc_increased_storage_size(
-            size_t desired_size, size_t curr_elem_size, size_t align) const noexcept -> std::pair<size_type, size_type>
-    {
-        const auto s = new_avg_obj_size(std::max(curr_elem_size, align), align);
-        auto begin = static_cast<pointer>(nullptr);
-        const auto first_align = !empty() ? begin_elem()->align() : size_t(1);
-        auto end = static_cast<pointer>(
-                next_aligned_storage(begin + desired_size * sizeof(elem_ptr), first_align));
-        end += storage_size(_begin_storage, this->end_storage());
-        end = static_cast<pointer>(next_aligned_storage(end, align));
-        end += (desired_size - size())*s;
-        return std::make_pair(desired_size, storage_size(begin, end));
-    }
-
-    template<class I,class A,class C>
-    inline auto poly_vector<I,A,C>::validate_layout(void_pointer const start, void_pointer const end, const alloc_descr_t n,
-                                  const size_t size, const size_t align) const noexcept -> alloc_descr_t
-    {
-        pointer const new_begin_storage =
-                static_cast<pointer>(start) + n.second.first * sizeof(elem_ptr);
-        void_pointer new_end_storage = new_begin_storage;
-        for (auto p = begin_elem(); p != end_elem() && new_end_storage <= end; ++p) {
-            new_end_storage = next_storage_for_object(new_end_storage, p->size(), p->align());
-        }
-        // at least one new object should be constructed
-        new_end_storage = next_storage_for_object(new_end_storage, size, align);
-        //return with previous alloc descriptor
-        if (new_end_storage > end)
-            return n;
-        //do not re-pivot begin_storage if there is not too much headroom or enough
-        if (storage_size(new_begin_storage, end) / new_avg_obj_size(size, align) <= n.second.first ||
-            storage_size(new_end_storage, end) < new_avg_obj_size(size, align)) {
-            return std::make_pair(true, std::make_pair(n.second.first, n.second.second));
-        }
-        // estimate excess elem no
-        auto new_size = n.second.first +
-                        estimate_excess(new_begin_storage, end, n, new_avg_obj_size(size, align));
-        // try to re-pivot storage
-        return validate_layout(start, end, std::make_pair(true,
-                                                          std::make_pair(new_size, n.second.second)), size, align);
     }
 
     template<class I,class A,class C>
@@ -1270,8 +1179,10 @@ namespace estd
     template<class I,class A,class C>
     inline auto poly_vector<I,A,C>::copy_assign_impl(const poly_vector& rhs) -> poly_vector&
     {
-        base().get_allocator_ref() = rhs.base().get_allocator_ref();
-        increase_storage(rhs, *this, rhs.size(), 0, 1, std::true_type{});
+        tidy();
+        base() = rhs.base();
+        init_ptrs(rhs.capacity());
+        set_ptrs(rhs.poly_uninitialized_copy(base().get_allocator_ref(), begin_elem(), rhs.size()));
         return *this;
     }
 
@@ -1345,9 +1256,10 @@ namespace estd
         constexpr auto s = sizeof(TT);
         constexpr auto a = alignof(TT);
         //////////////////////////////////////////
-        poly_vector v(base().get_allocator_ref());
-        const auto newsize = std::max(size() * 2, size_t(1));
-        v.resize_to_fit(*this, newsize, s, a);
+        const auto newsize = std::max(capacity() * 2, size_t(1));;
+        poly_vector v(allocator_traits::select_on_container_copy_construction(base().get_allocator_ref()));
+        v.base().allocate(calculate_storage_size(newsize, s, a));
+        v.init_ptrs(newsize);
         push_back_new_elem_w_storage_increase_copy(v, interface_type_noexcept_movable{});
         v.push_back_new_elem(std::forward<T>(obj));
         this->swap(v);
@@ -1365,18 +1277,6 @@ namespace estd
         v.set_ptrs(poly_uninitialized_copy(base().get_allocator_ref(),v.begin_elem(), v.capacity()));
     }
 
-    template<class I,class A,class C>
-    inline void poly_vector<I,A,C>::resize_to_fit(const poly_vector& v,std::size_t new_size,std::size_t size,std::size_t alignment)
-    {
-        alloc_descr_t n{ false,std::make_pair(new_size,std::size_t(0)) };
-        while (!n.first) {
-            this->reserve(n.second.first, v.new_avg_obj_size(size, alignment));
-            n = v.validate_layout(this->storage(), this->end_storage(), n, size, alignment);
-            if (!n.first) {
-                n.second.first *=2;
-            }
-        }
-    }
 
     template<class I,class A,class C>
     inline bool poly_vector<I,A,C>::can_construct_new_elem(size_t s, size_t align) noexcept
@@ -1389,13 +1289,6 @@ namespace estd
     inline auto poly_vector<I,A,C>::next_aligned_storage(size_t align) const noexcept -> void_pointer
     {
         return next_aligned_storage(_free_storage, align);
-    }
-
-    template<class I,class A,class C>
-    inline size_t poly_vector<I,A,C>::new_avg_obj_size(size_t new_object_size, size_t align)const noexcept
-    {
-        return (storage_size(_begin_storage, static_cast<pointer>(next_aligned_storage(align)) + new_object_size)
-                + this->size()) / (this->size() + 1);
     }
 
     template<class I,class A,class C>
@@ -1441,31 +1334,47 @@ namespace estd
         return std::max(new_alignment, max_alignment());
     }
     
-    template<class IF, class Allocator, class CloningPolicy>
-    inline size_t poly_vector<IF, Allocator, CloningPolicy>::max_alignment(elem_ptr_const_pointer begin, elem_ptr_const_pointer end) noexcept
+    template<class I, class A, class C>
+    inline void poly_vector<I,A,C>::init_ptrs(size_t cap) noexcept
+    {
+        _free_elem = static_cast<elem_ptr_pointer>(base().storage());
+        _begin_storage = _free_storage = begin_elem() + cap;
+    }
+
+    template<class I, class A, class C>
+    inline size_t poly_vector<I, A, C>::max_alignment(elem_ptr_const_pointer begin, elem_ptr_const_pointer end) noexcept
     {
         if (begin != end) {
             return  std::max_element(begin, end,
-                [](const auto lhs, const auto rhs) {return rhs->align() < lhs->align(); })->align();
-        } else
-            return alignof(std::max_align_t)
+                [](const auto& lhs, const auto& rhs) {return rhs.align() < lhs.align(); })->align();
+        }
+        else
+            return alignof(std::max_align_t);
     }
 
-    template<class IF, class Allocator, class CloningPolicy>
-    inline size_t poly_vector<IF, Allocator, CloningPolicy>::max_alignment(elem_ptr_const_pointer begin1, elem_ptr_const_pointer end1, elem_ptr_const_pointer begin2, elem_ptr_const_pointer end2) noexcept
+    template<class I, class A, class C>
+    inline size_t poly_vector<I, A, C>::max_alignment(elem_ptr_const_pointer begin1, elem_ptr_const_pointer end1, elem_ptr_const_pointer begin2, elem_ptr_const_pointer end2) noexcept
     {
         return std::max(max_alignment(begin1,end1),max_alignment(begin2,end2));
     }
     
-    template<class IF, class Allocator, class CloningPolicy>
-    inline size_t poly_vector<IF, Allocator, CloningPolicy>::calculate_storage_size(size_t new_size, size_t new_alignment) const noexcept
+    template<class I, class A, class C>
+    inline size_t poly_vector<I, A, C>::calculate_storage_size(
+        size_t new_size,size_t new_elem_size, size_t new_elem_alignment) const noexcept
     {
-        auto max_alignment = max_alignment(new_alignment);
+        auto max_alignment = this->max_alignment(new_elem_alignment);
         auto initial_alignment_buffer = max_alignment - alignof(std::max_align_t);
-        return std::accumulate(begin_elem(),end_elem(),std::max(std::max(new_size,new_alignment),max_alignment),
-            [=max_alignment](size_t val,const auto p) {
-            return val + std::max(std::max(p->size(), p->align()), max_alignment);
+        auto new_object_size = std::max(std::max(new_elem_size, new_elem_alignment), max_alignment);
+        auto buffer_size = std::accumulate(begin_elem(),end_elem(),initial_alignment_buffer,
+            [=](size_t val,const auto& p) {
+            return val + std::max(std::max(p.size(), p.align()), max_alignment);
         });
+        auto avg_obj_size = !empty() ? (buffer_size + new_object_size + size()) / (size() + 1) : new_object_size;
+        auto num_of_new_obj = new_size >= size() ? (new_size - size()) : 0U;
+        return new_size * sizeof(elem_ptr) +  // storage for ptrs
+            buffer_size +  // storage for existing elems w initial alignment
+            new_object_size +  // storage for the new elem
+            (num_of_new_obj * avg_obj_size); // estimated storage for new elems
     }
 }  // namespace estd
 
