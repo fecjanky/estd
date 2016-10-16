@@ -155,7 +155,7 @@ namespace estd
                     (has_clone_t::value || (has_move_t::value && is_noexcept_movable_t<T>::value));
         };
 
-        template<class Allocator = std::allocator<uint8_t> >
+        template<class Allocator>
         struct allocator_base : private Allocator
         {
 
@@ -624,27 +624,27 @@ namespace estd
         ///////////////////////////////////////////////
         // Member types
         ///////////////////////////////////////////////
-        using allocator_type = typename std::allocator_traits<Allocator>::template rebind_alloc<uint8_t>;
-        using interface_allocator_type = typename std::allocator_traits<Allocator>::template rebind_alloc<IF>;
-        using my_base = poly_vector_impl::allocator_base<allocator_type>;
-        using interface_type = std::decay_t<IF>;
-        using interface_pointer = typename interface_allocator_type ::pointer;
-        using const_interface_pointer = typename interface_allocator_type ::const_pointer ;
-        using interface_reference = typename interface_allocator_type::reference ;
-        using const_interface_reference = typename interface_allocator_type::const_reference;
-        using allocator_traits = std::allocator_traits<allocator_type>;
-        using pointer = typename my_base::pointer;
-        using const_pointer = typename my_base::const_pointer;
-        using void_pointer = typename my_base::void_pointer;
-        using const_void_pointer = typename my_base::const_void_pointer;
-        using size_type = std::size_t;
-        using iterator = poly_vector_iterator<interface_type ,interface_allocator_type, CloningPolicy>;
-        using const_iterator = poly_vector_iterator<const interface_type,interface_allocator_type,CloningPolicy>;
-        using reverse_iterator = std::reverse_iterator<iterator>;
-        using const_reverse_iterator = std::reverse_iterator<const_iterator>;
-        using move_is_noexcept_t = std::is_nothrow_move_assignable<my_base>;
-        using cloning_policy_traits = poly_vector_impl::cloning_policy_traits<CloningPolicy,interface_type,interface_allocator_type>;
-        using interface_type_noexcept_movable = typename cloning_policy_traits::noexcept_movable;
+        using allocator_type                    = typename std::allocator_traits<Allocator>::template rebind_alloc<uint8_t>;
+        using interface_allocator_type          = typename std::allocator_traits<Allocator>::template rebind_alloc<IF>;
+        using my_base                           = poly_vector_impl::allocator_base<allocator_type>;
+        using interface_type                    = std::decay_t<IF>;
+        using interface_pointer                 = typename interface_allocator_type ::pointer;
+        using const_interface_pointer           = typename interface_allocator_type ::const_pointer ;
+        using interface_reference               = typename interface_allocator_type::reference ;
+        using const_interface_reference         = typename interface_allocator_type::const_reference;
+        using allocator_traits                  = std::allocator_traits<allocator_type>;
+        using pointer                           = typename my_base::pointer;
+        using const_pointer                     = typename my_base::const_pointer;
+        using void_pointer                      = typename my_base::void_pointer;
+        using const_void_pointer                = typename my_base::const_void_pointer;
+        using size_type                         = std::size_t;
+        using iterator                          = poly_vector_iterator<interface_type ,interface_allocator_type, CloningPolicy>;
+        using const_iterator                    = poly_vector_iterator<const interface_type,interface_allocator_type,CloningPolicy>;
+        using reverse_iterator                  = std::reverse_iterator<iterator>;
+        using const_reverse_iterator            = std::reverse_iterator<const_iterator>;
+        using move_is_noexcept_t                = std::is_nothrow_move_assignable<my_base>;
+        using cloning_policy_traits             = poly_vector_impl::cloning_policy_traits<CloningPolicy,interface_type,interface_allocator_type>;
+        using interface_type_noexcept_movable   = typename cloning_policy_traits::noexcept_movable;
 
         static_assert(std::is_same<IF,interface_type>::value,
                       "Interface type must be a non-cv qualified user defined type");
@@ -727,7 +727,7 @@ namespace estd
         using poly_copy_descr           = std::tuple<elem_ptr_pointer , elem_ptr_pointer, void_pointer >;
 
         ////////////////////////
-        /// Storage management helper
+        /// Storage management helpers
         ////////////////////////
         static void_pointer     next_aligned_storage(void_pointer p, size_t align)  noexcept;
         static void_pointer     next_storage_for_object(void_pointer s, size_t size, size_t align)      noexcept;
@@ -755,7 +755,6 @@ namespace estd
             size_t n,
             std::false_type) noexcept;
 
-        ////////////////////////
         my_base&                base()  noexcept;
         const my_base&          base()  const   noexcept;
         poly_copy_descr         poly_uninitialized_copy(const allocator_type& a,elem_ptr_pointer dst, size_t n) const;
@@ -1095,7 +1094,8 @@ namespace estd
     template<typename CopyOrMove>
     inline void poly_vector<I,A,C>::increase_storage(size_t desired_size, size_t curr_elem_size, size_t align ,CopyOrMove)
     {
-        my_base s{calculate_storage_size(desired_size,curr_elem_size,align)};
+        my_base s(calculate_storage_size(desired_size,curr_elem_size,align),
+            allocator_traits::select_on_container_copy_construction(base().get_allocator_ref()));
         obtain_storage(std::move(s), desired_size, CopyOrMove{});
     }
 
