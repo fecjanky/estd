@@ -33,6 +33,7 @@
 #include <cmath>
 #include <type_traits>
 #include <iterator>
+#include <numeric>
 
 namespace estd
 {
@@ -375,7 +376,7 @@ namespace estd
 
 
     template<class Allocator,class CloningPolicy>
-    struct poly_vector_elem_ptr : private CloningPolicy
+    struct alignas(std::max_align_t) poly_vector_elem_ptr : private CloningPolicy
     {
         using IF = typename  std::allocator_traits<Allocator>::value_type;
         using void_pointer = typename std::allocator_traits<Allocator>::void_pointer;
@@ -767,7 +768,15 @@ namespace estd
                 const alloc_descr_t n,
                 const size_t size,
                 const size_t align) const noexcept;
-
+        ////////////////////////
+        /// Storage management helper
+        ////////////////////////
+        static size_t max_alignment(elem_ptr_const_pointer begin, elem_ptr_const_pointer end) noexcept;
+        static size_t max_alignment(elem_ptr_const_pointer begin1, elem_ptr_const_pointer end1, elem_ptr_const_pointer begin2, elem_ptr_const_pointer end2) noexcept;
+        size_t max_alignment() const noexcept;
+        size_t max_alignment(size_t new_alignment) const noexcept;
+        size_t calculate_storage_size(size_t new_size, size_t new_alignment) const noexcept;
+        ////////////////////////
         my_base&                base()  noexcept;
         const my_base&          base()  const   noexcept;
         poly_copy_descr         poly_uninitialized_copy(const allocator_type& a,elem_ptr_pointer dst, size_t n) const;
@@ -1420,8 +1429,44 @@ namespace estd
         return static_cast<elem_ptr_const_pointer>(_free_elem);
     }
 
+    template<class I, class A, class C>
+    inline size_t poly_vector<I, A, C>::max_alignment() const noexcept
+    {
+        return max_alignment(begin_elem(), end_elem());
+    }
+    
+    template<class I, class A, class C>
+    size_t poly_vector<I, A, C>::max_alignment(size_t new_alignment) const noexcept
+    {
+        return std::max(new_alignment, max_alignment());
+    }
+    
+    template<class IF, class Allocator, class CloningPolicy>
+    inline size_t poly_vector<IF, Allocator, CloningPolicy>::max_alignment(elem_ptr_const_pointer begin, elem_ptr_const_pointer end) noexcept
+    {
+        if (begin != end) {
+            return  std::max_element(begin, end,
+                [](const auto lhs, const auto rhs) {return rhs->align() < lhs->align(); })->align();
+        } else
+            return alignof(std::max_align_t)
+    }
 
-
+    template<class IF, class Allocator, class CloningPolicy>
+    inline size_t poly_vector<IF, Allocator, CloningPolicy>::max_alignment(elem_ptr_const_pointer begin1, elem_ptr_const_pointer end1, elem_ptr_const_pointer begin2, elem_ptr_const_pointer end2) noexcept
+    {
+        return std::max(max_alignment(begin1,end1),max_alignment(begin2,end2));
+    }
+    
+    template<class IF, class Allocator, class CloningPolicy>
+    inline size_t poly_vector<IF, Allocator, CloningPolicy>::calculate_storage_size(size_t new_size, size_t new_alignment) const noexcept
+    {
+        auto max_alignment = max_alignment(new_alignment);
+        auto initial_alignment_buffer = max_alignment - alignof(std::max_align_t);
+        return std::accumulate(begin_elem(),end_elem(),std::max(std::max(new_size,new_alignment),max_alignment),
+            [=max_alignment](size_t val,const auto p) {
+            return val + std::max(std::max(p->size(), p->align()), max_alignment);
+        });
+    }
 }  // namespace estd
 
 #endif  //POLY_VECTOR_H_
