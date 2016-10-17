@@ -542,6 +542,9 @@ namespace estd
     class poly_vector_iterator
     {
     public:
+        using interface_type = IF;
+        using allocator_type = Allocator;
+        using cloning_policy = CP;
         using p_elem = poly_vector_elem_ptr<Allocator, CP>;
         using elem = std::conditional_t<std::is_const<IF>::value,std::add_const_t<p_elem>,p_elem>;
         using void_ptr = typename std::allocator_traits<Allocator>::void_pointer;
@@ -550,12 +553,32 @@ namespace estd
         using reference = decltype(*std::declval<pointer>());
         using const_reference = decltype(*std::declval<const_pointer>());
         using elem_ptr = typename std::pointer_traits<pointer>::template rebind <elem>;
+        using difference_type = typename std::pointer_traits<elem_ptr>::difference_type;
+        using value_type = typename std::pointer_traits<elem_ptr>::element_type;
 
         poly_vector_iterator() : curr{} {}
         explicit poly_vector_iterator(elem_ptr p) : curr{ p } {}
+        
+        template<class T , 
+            typename = std::enable_if_t<
+                 std::is_same<std::remove_const_t<IF>,T>::value &&
+                !std::is_same<poly_vector_iterator, poly_vector_iterator<T, Allocator, CP>>::value
+            >
+        >
+        poly_vector_iterator(const poly_vector_iterator<T, Allocator, CP>& other) : curr{other.get()} {}
+        
         poly_vector_iterator(const poly_vector_iterator&) = default;
+        poly_vector_iterator(poly_vector_iterator&&) = default;
         poly_vector_iterator& operator=(const poly_vector_iterator&) = default;
+        poly_vector_iterator& operator=(poly_vector_iterator&&) = default;
+
         ~poly_vector_iterator() = default;
+
+        void swap(poly_vector_iterator& rhs)
+        {
+            using std::swap;
+            swap(curr, rhs.curr);
+        }
 
         pointer operator->() noexcept
         {
@@ -596,6 +619,28 @@ namespace estd
             --curr;
             return i;
         }
+        poly_vector_iterator& operator+=(difference_type n)
+        {
+            curr += n;
+            return *this;
+        }
+        poly_vector_iterator& operator-=(difference_type n)
+        {
+            curr -= n;
+            return *this;
+        }
+        difference_type operator-(poly_vector_iterator rhs)const
+        {
+            return curr - rhs.curr;
+        }
+        reference operator[](difference_type n)
+        {
+            return *(curr[n]->ptr.second);
+        }
+        const_reference operator[](difference_type n) const
+        {
+            return *(curr[n]->ptr.second);
+        }
         bool operator==(const poly_vector_iterator& rhs)const noexcept
         {
             return curr == rhs.curr;
@@ -604,10 +649,54 @@ namespace estd
         {
             return curr != rhs.curr;
         }
+        bool operator<(const poly_vector_iterator& rhs)const noexcept
+        {
+            return curr < rhs.curr;
+        }
+        bool operator>(const poly_vector_iterator& rhs)const noexcept
+        {
+            return curr > rhs.curr;
+        }
+        bool operator<=(const poly_vector_iterator& rhs)const noexcept
+        {
+            return curr <= rhs.curr;
+        }
+        bool operator>=(const poly_vector_iterator& rhs)const noexcept
+        {
+            return curr >= rhs.curr;
+        }
 
+        elem_ptr get() const noexcept
+        {
+            return curr;
+        }
     private:
         elem_ptr curr;
     };
+
+    template<class IF, class Allocator, class CP>
+    void swap(poly_vector_iterator<IF, Allocator, CP>& lhs, poly_vector_iterator<IF, Allocator, CP>& rhs)
+    {
+        lhs.swap(rhs);
+    }
+    template<class IF, class Allocator, class CP>
+    poly_vector_iterator<IF, Allocator, CP> operator+(poly_vector_iterator<IF, Allocator, CP> a, typename poly_vector_iterator<IF, Allocator, CP>::difference_type n)
+    {
+        auto temp = a;
+        return a += n;
+    }
+    template<class IF, class Allocator, class CP>
+    poly_vector_iterator<IF, Allocator, CP> operator+(typename poly_vector_iterator<IF, Allocator, CP>::difference_type n, poly_vector_iterator<IF, Allocator, CP> a )
+    {
+        auto temp = a;
+        return a += n;
+    }
+    template<class IF, class Allocator, class CP>
+    poly_vector_iterator<IF, Allocator, CP> operator-(poly_vector_iterator<IF, Allocator, CP> i, typename poly_vector_iterator<IF, Allocator, CP>::difference_type n)
+    {
+        auto temp = i;
+        return i -= n;
+    }
 
     template<
         class IF,
@@ -678,6 +767,8 @@ namespace estd
         //template <class InputIterator>
         //iterator insert (const_iterator position, InputIterator first, InputIterator last);
         //iterator insert (const_iterator position, polyvectoriterator first, polyvectoriterator last);
+        iterator        erase(const_iterator position);
+        iterator        erase(const_iterator first, const_iterator last);
         ///////////////////////////////////////////////
         // Iterators
         ///////////////////////////////////////////////
@@ -763,6 +854,9 @@ namespace estd
         poly_vector&            move_assign_impl(poly_vector&& rhs, std::true_type) noexcept;
         poly_vector&            move_assign_impl(poly_vector&& rhs, std::false_type);
         void                    tidy()  noexcept;
+        void                    destroy_elem(elem_ptr_pointer p)    noexcept;
+        void                    destroy_range(elem_ptr_pointer first, elem_ptr_pointer last)    noexcept;
+        void                    clear_range(elem_ptr_pointer first, elem_ptr_pointer last)    noexcept;
         void                    init_ptrs(size_t n)     noexcept;
         void                    set_ptrs(poly_copy_descr p);
         void                    swap_ptrs(poly_vector&& rhs);
@@ -867,20 +961,13 @@ namespace estd
     template<class I,class A,class C>
     inline void poly_vector<I,A,C>::pop_back()noexcept
     {
-        base().destroy(std::addressof(back()));
-        _free_storage = static_cast<pointer>(_free_storage) - begin_elem()[size() - 1].size();
-        base().destroy(std::addressof(begin_elem()[size() - 1]));
-        _free_elem = &begin_elem()[size() - 1];
+        clear_range(_free_elem-1, _free_elem);
     }
 
     template<class I,class A,class C>
     inline void poly_vector<I,A,C>::clear() noexcept
     {
-        for (auto src = begin_elem(); src != _free_elem; ++src) {
-            base().destroy(src->ptr.second);
-        }
-        _free_elem = begin_elem();
-        _free_storage = _begin_storage;
+        clear_range(begin_elem(), _free_elem);
     }
 
     template<class I,class A,class C>
@@ -891,6 +978,26 @@ namespace estd
         swap(_free_elem, x._free_elem);
         swap(_begin_storage, x._begin_storage);
         swap(_free_storage, x._free_storage);
+    }
+
+    template<class I, class A, class C>
+    inline auto poly_vector<I, A, C>::erase(const_iterator position) -> iterator
+    {
+        return erase(position,position+1);
+    }
+
+    template<class I, class A, class C>
+    inline auto poly_vector<I, A, C>::erase(const_iterator first, const_iterator last) -> iterator
+    {
+        if (first == last)return iterator(begin()+(last-begin()));
+        if (last == end()) {
+            // delete till end, easy case
+            clear_range((begin() + (first-begin())).get(), (begin() + (last-begin())).get());
+            return end();
+        }
+        // else implement erase logic
+
+        return iterator();
     }
 
     template<class I,class A,class C>
@@ -1211,6 +1318,29 @@ namespace estd
         clear();
         _begin_storage = _free_storage = _free_elem = nullptr;
         my_base::tidy();
+    }
+
+    template<class I, class A, class C>
+    inline void poly_vector<I, A, C>::destroy_elem(elem_ptr_pointer p) noexcept
+    {
+        base().destroy(p->ptr.second);
+        base().destroy(p);
+    }
+
+    template<class I, class A, class C>
+    inline void poly_vector<I, A, C>::destroy_range(elem_ptr_pointer first, elem_ptr_pointer last) noexcept
+    {
+        for (; first != last; ++first) {
+            destroy_elem(first);
+        }
+    }
+
+    template<class I, class A, class C>
+    inline void poly_vector<I, A, C>::clear_range(elem_ptr_pointer first, elem_ptr_pointer last) noexcept
+    {
+        destroy_range(first, last);
+        _free_elem = first;
+        _free_storage = (_free_elem != begin_elem()) ? static_cast<pointer>(_free_elem[-1].ptr.first) + _free_elem[-1].size() : _begin_storage;
     }
 
     template<class I,class A,class C>

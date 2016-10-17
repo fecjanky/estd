@@ -102,6 +102,39 @@ TEST(poly_vector_basic_tests, no_cloning_policy_gives_e_what)
     EXPECT_TRUE(throwed);
 }
 
+TEST(poly_vector_basic_tests, erase_from_begin_to_end_clears_the_vector)
+{
+    estd::poly_vector<Interface> v{};
+    v.push_back(Impl1(3.14));
+    v.push_back(Impl2());
+    auto it = v.erase(v.begin(),v.end());
+    EXPECT_EQ(it, v.end());
+    EXPECT_EQ(0, v.size());
+}
+
+TEST(poly_vector_basic_tests, erase_includes_end_remove_elems_from_end)
+{
+    estd::poly_vector<Interface> v{};
+    v.push_back(Impl1(3.14));
+    v.push_back(Impl2());
+    auto id = v[0].getId();
+    auto it = v.erase(++v.begin(), v.end());
+    
+    EXPECT_EQ(it, v.end());
+    EXPECT_EQ(1, v.size());
+    EXPECT_EQ(id, v[0].getId());
+}
+
+TEST(poly_vector_basic_tests, erase_from_end_position_is_same_as_pop_back)
+{
+    estd::poly_vector<Interface> v{};
+    v.push_back(Impl1(3.14));
+    v.push_back(Impl2());
+    auto id = v[0].getId();
+    v.erase(++v.begin());
+    EXPECT_EQ(1, v.size());
+    EXPECT_EQ(id, v[0].getId());
+}
 
 template<class CloningPolicy>
 class poly_vector_modifiers_test : public ::testing::Test {
@@ -283,6 +316,8 @@ void test_poly_vector() {
         v.push_back( Impl2{} );
         v.push_back( Impl2{} );
         v.push_back( Impl1{ 6.28 } );
+        v.push_back(Impl2{});
+        v.push_back(Impl2{});
         v.push_back( Impl2{} );
         
         v2 = v;

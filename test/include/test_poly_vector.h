@@ -85,6 +85,10 @@ struct Interface
     void set_throw_on_copy_construction(bool val) noexcept {
         throw_on_copy_construction = val;
     }
+    size_t getId() const noexcept
+    {
+        return my_id;
+    }
 private:
     size_t my_id;
     static std::atomic<size_t> last_id;
