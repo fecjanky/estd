@@ -856,7 +856,7 @@ namespace estd
         void                    tidy()  noexcept;
         void                    destroy_elem(elem_ptr_pointer p)    noexcept;
         void                    destroy_range(elem_ptr_pointer first, elem_ptr_pointer last)    noexcept;
-        void                    clear_range(elem_ptr_pointer first, elem_ptr_pointer last)    noexcept;
+        void                    clear_till_end(elem_ptr_pointer first)    noexcept;
         void                    init_ptrs(size_t n)     noexcept;
         void                    set_ptrs(poly_copy_descr p);
         void                    swap_ptrs(poly_vector&& rhs);
@@ -961,13 +961,13 @@ namespace estd
     template<class I,class A,class C>
     inline void poly_vector<I,A,C>::pop_back()noexcept
     {
-        clear_range(_free_elem-1, _free_elem);
+        clear_till_end(_free_elem-1);
     }
 
     template<class I,class A,class C>
     inline void poly_vector<I,A,C>::clear() noexcept
     {
-        clear_range(begin_elem(), _free_elem);
+        clear_till_end(begin_elem());
     }
 
     template<class I,class A,class C>
@@ -992,7 +992,7 @@ namespace estd
         if (first == last)return iterator(begin()+(last-begin()));
         if (last == end()) {
             // delete till end, easy case
-            clear_range((begin() + (first-begin())).get(), (begin() + (last-begin())).get());
+            clear_till_end((begin() + (first-begin())).get());
             return end();
         }
         // else implement erase logic
@@ -1336,9 +1336,9 @@ namespace estd
     }
 
     template<class I, class A, class C>
-    inline void poly_vector<I, A, C>::clear_range(elem_ptr_pointer first, elem_ptr_pointer last) noexcept
+    inline void poly_vector<I, A, C>::clear_till_end(elem_ptr_pointer first) noexcept
     {
-        destroy_range(first, last);
+        destroy_range(first, _free_elem);
         _free_elem = first;
         _free_storage = (_free_elem != begin_elem()) ? static_cast<pointer>(_free_elem[-1].ptr.first) + _free_elem[-1].size() : _begin_storage;
     }
