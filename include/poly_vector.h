@@ -35,7 +35,6 @@
 #include <iterator>
 #include <numeric>
 
-#include "estd_alloca.h"
 
 namespace estd
 {
