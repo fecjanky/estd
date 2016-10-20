@@ -15,6 +15,9 @@
     <Filter Include="UTest\Header Files">
       <UniqueIdentifier>{0efa635d-84dd-4867-acbf-4309103bab86}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Resources">
+      <UniqueIdentifier>{e9ef4008-6b8f-4cb5-8e6c-afc0920b3fef}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\include\functional.h">
@@ -37,6 +40,9 @@
     </ClInclude>
     <ClInclude Include="..\test\include\test_poly_vector.h">
       <Filter>UTest\Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\estd_alloca.h">
+      <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -61,5 +67,13 @@
   </ItemGroup>
   <ItemGroup>
     <Natvis Include="poly_vector.natvis" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\poly_vector_notes.md">
+      <Filter>Resources</Filter>
+    </None>
+    <None Include="..\README.md">
+      <Filter>Resources</Filter>
+    </None>
   </ItemGroup>
 </Project>
