@@ -65,7 +65,7 @@ TEST(poly_vector_basic_tests, descendants_of_interface_can_be_pushed_back_into_t
 TEST(poly_vector_basic_tests, is_not_copyable_with_no_cloning_policy)
 {
     estd::poly_vector<Interface, std::allocator<Interface>, estd::no_cloning_policy<Interface>> v{};
-    v.reserve(2, std::max(sizeof(Impl1),sizeof(Impl2)));
+    v.reserve(2, std::max(sizeof(Impl1),sizeof(Impl2)),std::max(alignof(Impl1),alignof(Impl2)));
     v.push_back(Impl1(3.14));
     v.push_back(Impl2());
     EXPECT_THROW(v.push_back(Impl2()), estd::no_cloning_exception);
@@ -76,10 +76,10 @@ bool is_aligned_properly(T& obj) {
     return reinterpret_cast<std::uintptr_t>(&obj) % alignof(T) == 0;
 }
 
-TEST(poly_vector_basic_tests, objects_are_allocater_with_proper_alignment)
+TEST(poly_vector_basic_tests, objects_are_allocated_with_proper_alignment)
 {
-    estd::poly_vector<Interface, std::allocator<Interface>, estd::no_cloning_policy<Interface>> v{};
-    v.reserve(2, std::max(sizeof(Impl1), sizeof(Impl2)));
+    estd::poly_vector<Interface> v{};
+    v.reserve(2, std::max(sizeof(Impl1), sizeof(Impl2)), std::max(alignof(Impl1), alignof(Impl2)));
     v.push_back(Impl1(3.14));
     v.push_back(Impl2());
     EXPECT_TRUE(is_aligned_properly(static_cast<Impl1&>(v[0])));
