@@ -377,9 +377,9 @@ namespace estd
 
 
     template<
-	class Interface,
-	class Allocator = std::allocator<Interface>, 
-	typename NoExceptmovable = std::true_type
+    class Interface,
+    class Allocator = std::allocator<Interface>, 
+    typename NoExceptmovable = std::true_type
     >class delegate_cloning_policy;
 
     template<
@@ -1277,24 +1277,26 @@ namespace estd
     template<class I,class A,class C>
     inline auto poly_vector<I,A,C>::poly_uninitialized_copy(const allocator_type& a,elem_ptr_pointer dst, size_t n) const -> poly_copy_descr
     {
-        auto dst_begin = dst;
+        const auto dst_begin = dst;
         const auto storage_begin = dst + n;
         void_pointer dst_storage = storage_begin;
+        for (auto elem_dst = dst_begin; elem_dst != storage_begin; ++elem_dst)
+            base().construct(elem_dst);
         try {
             for (auto elem = begin_elem(); elem != _free_elem; ++elem, ++dst) {
-                base().construct(static_cast<elem_ptr_pointer>(dst),*elem);
+                *dst = *elem;
                 dst->ptr.first = next_aligned_storage(dst_storage, _align_max);
                 dst->ptr.second = elem->policy().clone(a,elem->ptr.second, dst->ptr.first);
                 dst_storage = static_cast<pointer>(dst->ptr.first) + dst->size();
             }
             return std::make_tuple(dst, storage_begin, dst_storage);
         } catch (...) {
-            base().destroy(dst);
             while(dst-- != dst_begin)
             {
                 base().destroy(dst->ptr.second);
-                base().destroy(dst);
             }
+            for (auto elem_dst = dst_begin; elem_dst != storage_begin; ++elem_dst)
+                base().destroy(elem_dst);
             throw;
         }
     }
@@ -1302,11 +1304,13 @@ namespace estd
     template<class I,class A,class C>
     inline auto poly_vector<I,A,C>::poly_uninitialized_move(const allocator_type& a,elem_ptr_pointer dst, size_t n) const noexcept -> poly_copy_descr
     {
-        auto dst_begin = dst;
+        const auto dst_begin = dst;
         const auto storage_begin = dst + n;
         void_pointer dst_storage = storage_begin;
+        for (auto elem_dst = dst_begin; elem_dst != storage_begin; ++elem_dst)
+            base().construct(elem_dst);
         for (auto elem = begin_elem(); elem != _free_elem; ++elem, ++dst) {
-            base().construct(static_cast<elem_ptr_pointer>(dst),*elem);
+            *dst = *elem;
             dst->ptr.first = next_aligned_storage(dst_storage, _align_max);
             dst->ptr.second =
                     elem->policy().move(a,elem->ptr.second, dst->ptr.first);
@@ -1350,6 +1354,7 @@ namespace estd
     inline void poly_vector<I,A,C>::tidy() noexcept
     {
         clear();
+        for (auto i = begin_elem(); i != begin_elem()+capacity(); ++i)base().destroy(i);
         _begin_storage = _free_storage = _free_elem = nullptr;
         my_base::tidy();
     }
@@ -1358,7 +1363,7 @@ namespace estd
     inline void poly_vector<I, A, C>::destroy_elem(elem_ptr_pointer p) noexcept
     {
         base().destroy(p->ptr.second);
-        base().destroy(p);
+        *p = elem_ptr();
     }
 
     template<class I, class A, class C>
@@ -1406,8 +1411,7 @@ namespace estd
         assert(can_construct_new_elem(s, a));
         assert(_align_max >= a);
         auto nas = next_aligned_storage(_align_max);
-        _free_elem = base().construct (_free_elem,std::forward<T>(obj),
-                                       nas, base().construct(static_cast<typename traits::pointer>(nas),std::forward<T>(obj)));
+        *_free_elem = elem_ptr(std::forward<T>(obj),nas, base().construct(static_cast<typename traits::pointer>(nas),std::forward<T>(obj)));
         _free_storage = static_cast<pointer>(_free_elem->ptr.first) + s;
         ++_free_elem;
     }
