@@ -112,6 +112,22 @@ TEST(poly_vector_basic_tests, erase_from_begin_to_end_clears_the_vector)
     EXPECT_EQ(0, v.size());
 }
 
+TEST(poly_vector_basic_tests, erase_can_be_called_with_any_valid_iterator_to_a_vector_elem)
+{
+    estd::poly_vector<Interface> v{};
+    v.push_back(Impl1(3.14));
+    v.push_back(Impl1(3.14));
+    v.push_back(Impl2());
+    v.push_back(Impl1(3.14));
+    v.push_back(Impl2());
+    auto it = v.erase(v.begin(), v.begin()+2);
+    EXPECT_EQ(it, v.begin());
+    EXPECT_EQ(3, v.size());
+    EXPECT_NO_THROW(dynamic_cast<Impl2&>(v[0]));
+    EXPECT_NO_THROW(dynamic_cast<Impl1&>(v[1]));
+    EXPECT_NO_THROW(dynamic_cast<Impl2&>(v[2]));
+}
+
 TEST(poly_vector_basic_tests, erase_includes_end_remove_elems_from_end)
 {
     estd::poly_vector<Interface> v{};

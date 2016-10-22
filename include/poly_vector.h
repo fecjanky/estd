@@ -831,7 +831,6 @@ namespace estd
         /// Storage management helpers
         ////////////////////////
         static void_pointer         next_aligned_storage(void_pointer p, size_t align)  noexcept;
-        static void_pointer         next_storage_for_object(void_pointer s, size_t size, size_t align)      noexcept;
         static size_t               storage_size(const_void_pointer b, const_void_pointer e)        noexcept;
         static size_t               max_alignment(elem_ptr_const_pointer begin, elem_ptr_const_pointer end)     noexcept;
         static size_t               max_alignment(elem_ptr_const_pointer begin1, elem_ptr_const_pointer end1, elem_ptr_const_pointer begin2, elem_ptr_const_pointer end2)   noexcept;
@@ -839,6 +838,7 @@ namespace estd
         size_t                      max_alignment()     const   noexcept;
         size_t                      max_alignment(size_t new_alignment)     const   noexcept;
         std::pair<size_t,size_t>    calculate_storage_size(size_t new_size,size_t new_elem_size, size_t new_elem_alignment) const noexcept;
+        size_type                   occupied_storage(elem_ptr_const_pointer p)  const   noexcept;
 
         template<typename CopyOrMove>
         void increase_storage(
@@ -868,7 +868,9 @@ namespace estd
         poly_vector&            move_assign_impl(poly_vector&& rhs, std::false_type);
         void                    tidy()  noexcept;
         void                    destroy_elem(elem_ptr_pointer p)    noexcept;
-        void                    destroy_range(elem_ptr_pointer first, elem_ptr_pointer last)    noexcept;
+        std::pair<void_pointer,void_pointer>
+                                destroy_range(elem_ptr_pointer first, elem_ptr_pointer last)    noexcept;
+        iterator                erase_internal_range(elem_ptr_pointer first, elem_ptr_pointer last);
         void                    clear_till_end(elem_ptr_pointer first)    noexcept;
         void                    init_ptrs(size_t n)     noexcept;
         void                    set_ptrs(poly_copy_descr p);
@@ -1006,21 +1008,13 @@ namespace estd
     template<class I, class A, class C>
     inline auto poly_vector<I, A, C>::erase(const_iterator first, const_iterator last) -> iterator
     {
+        auto eptr_first = begin_elem() + (first - begin());
         if (last == end()) {
-            // delete till end, easy case
-            clear_till_end((begin() + (first-begin())).get());
+            clear_till_end(eptr_first);
             return end();
         }
         else {
-            // else implement erase logic
-            // v1 implementation:
-            // - destroy interval,
-            // - shift storage only if all subsequent elems can be shifted or
-            // - shift pointers only
-            auto eptr_first = begin_elem() + (first - begin());
-            auto eptr_last = begin_elem() + (last - begin());
-            destroy_range(eptr_first, eptr_last);
-            return iterator(eptr_first);
+            return erase_internal_range(eptr_first, begin_elem() + (last - begin()));
         }
     }
 
@@ -1213,14 +1207,6 @@ namespace estd
     }
 
     template<class I,class A,class C>
-    inline auto poly_vector<I,A,C>::next_storage_for_object(void_pointer s, size_t size, size_t align) noexcept -> void_pointer
-    {
-        s = next_aligned_storage(s, align);
-        s = static_cast<pointer>(s) + size;
-        return s;
-    }
-
-    template<class I,class A,class C>
     inline size_t poly_vector<I,A,C>::storage_size(const_void_pointer b, const_void_pointer e) noexcept
     {
         using const_pointer_t = typename allocator_traits::const_pointer;
@@ -1367,11 +1353,47 @@ namespace estd
     }
 
     template<class I, class A, class C>
-    inline void poly_vector<I, A, C>::destroy_range(elem_ptr_pointer first, elem_ptr_pointer last) noexcept
+    inline auto poly_vector<I, A, C>::destroy_range(elem_ptr_pointer first, elem_ptr_pointer last) noexcept -> std::pair<void_pointer, void_pointer>
     {
+        std::pair<void_pointer, void_pointer> ret{};
+        if (first != last) {
+            ret.first = first->ptr.first;
+            ret.second = last != end_elem() ? last->ptr.first : base().end_storage();
+        }
         for (; first != last; ++first) {
             destroy_elem(first);
         }
+        return ret;
+    }
+
+    template<class I, class A, class C>
+    inline auto poly_vector<I, A, C>::erase_internal_range(elem_ptr_pointer first, elem_ptr_pointer last) -> iterator
+    {
+        auto return_iterator = first;
+        auto free_range = destroy_range(first, last);
+        auto it = last;
+        for (; it != end_elem() && first != last && occupied_storage(it) <= storage_size(free_range.first, free_range.second); ++it, ++first) {
+            try {
+                auto clone = cloning_policy_traits::move(it->policy(), base().get_allocator_ref(), it->ptr.second, free_range.first);
+                base().destroy(it->ptr.second);
+                *first = *it;
+                *it = elem_ptr{};
+                first->ptr = std::make_pair(free_range.first,clone);
+                const auto next_storage = [](void_pointer p, size_type s, size_t a) { return next_aligned_storage(static_cast<pointer>(p) + s, a); };
+                free_range = std::make_pair(next_storage(free_range.first,first->size(),_align_max), next_storage(free_range.second, first->size(), _align_max));
+            }
+            catch (...) {
+                clear_till_end(it);
+                throw;
+            }
+        }
+        for (; it != end_elem(); ++it, ++first) {
+            *first = *it;
+            *it = elem_ptr{};
+        }
+
+        _free_elem = first;
+        return iterator(return_iterator);
     }
 
     template<class I, class A, class C>
@@ -1554,6 +1576,12 @@ namespace estd
             new_object_size +  // storage for the new elem
             (num_of_new_obj * avg_obj_size); // estimated storage for new elems
         return std::make_pair(size, max_alignment);
+    }
+
+    template<class I, class A, class C>
+    inline auto poly_vector<I, A, C>::occupied_storage(elem_ptr_const_pointer p) const noexcept -> size_type
+    {
+        return ((p->size() + _align_max - 1) / _align_max) * _align_max;
     }
 }  // namespace estd
 
