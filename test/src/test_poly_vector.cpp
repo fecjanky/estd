@@ -128,6 +128,7 @@ TEST(poly_vector_basic_tests, erase_can_be_called_with_any_valid_iterator_to_a_v
     EXPECT_NO_THROW(dynamic_cast<Impl2&>(v[2]));
 }
 
+
 TEST(poly_vector_basic_tests, erase_includes_end_remove_elems_from_end)
 {
     estd::poly_vector<Interface> v{};
@@ -306,6 +307,30 @@ TYPED_TEST_P(poly_vector_modifiers_test, strog_guarantee_when_there_is_an_except
     }
 }
 
+TYPED_TEST_P(poly_vector_modifiers_test, basic_guarantee_when_there_is_an_exception_during_erase_and_last_element_is_not_included_in_erased_range)
+{
+    this->v.push_back(Impl1{});
+    this->v.push_back(Impl1{});
+    this->v.push_back(Impl1{});
+    this->v.push_back(Impl1{});
+    this->v.push_back(Impl2{});
+    this->v.push_back(Impl1{});
+    this->v.push_back(Impl2{});
+
+    auto start = this->v.begin() + 3;
+    auto end = start + 1;
+
+    if (!std::is_same<TypeParam, estd::delegate_cloning_policy<Interface>>{}) {
+        this->v.at(5).set_throw_on_copy_construction(true);
+        auto old_sizes = this->v.sizes();
+        EXPECT_THROW(this->v.erase(start, end), std::exception);
+        EXPECT_LT(this->v.size(), old_sizes.first);
+    }
+    else {
+        EXPECT_NO_THROW(this->v.erase(start, end));
+    }
+}
+
 REGISTER_TYPED_TEST_CASE_P(poly_vector_modifiers_test,
     back_accesses_the_last_element, 
     front_accesses_the_first_element,
@@ -317,7 +342,8 @@ REGISTER_TYPED_TEST_CASE_P(poly_vector_modifiers_test,
     swap_swaps_the_contents_of_two_vectors,
     copy_assignment_copies_contained_elems,
     move_assignment_moves_contained_elems,
-    strog_guarantee_when_there_is_an_exception_during_push_back_w_reallocation
+    strog_guarantee_when_there_is_an_exception_during_push_back_w_reallocation,
+    basic_guarantee_when_there_is_an_exception_during_erase_and_last_element_is_not_included_in_erased_range
 );
 
 INSTANTIATE_TYPED_TEST_CASE_P(poly_vector, poly_vector_modifiers_test, CloneTypes);

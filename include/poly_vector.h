@@ -413,6 +413,14 @@ namespace estd
             sf = rhs.sf;
             return *this;
         }
+        void swap(poly_vector_elem_ptr& rhs) noexcept
+        {
+            using std::swap;
+            swap(policy(), rhs.policy());
+            swap(ptr, rhs.ptr);
+            swap(sf, rhs.sf);
+        }
+
         policy_t& policy()noexcept
         {
             return *this;
@@ -444,6 +452,11 @@ namespace estd
     private:
         size_func_t* sf;
     };
+
+    template<class A, class C>
+    void swap(poly_vector_elem_ptr<A, C>& lhs, poly_vector_elem_ptr<A, C>& rhs) noexcept {
+        lhs.swap(rhs);
+    }
 
     template<class IF,class Allocator = std::allocator<IF> >
     struct virtual_cloning_policy
@@ -1369,30 +1382,30 @@ namespace estd
     template<class I, class A, class C>
     inline auto poly_vector<I, A, C>::erase_internal_range(elem_ptr_pointer first, elem_ptr_pointer last) -> iterator
     {
+        assert(first != last);
+        assert(last != end_elem());
+        using std::swap;
         auto return_iterator = first;
         auto free_range = destroy_range(first, last);
-        auto it = last;
-        for (; it != end_elem() && first != last && occupied_storage(it) <= storage_size(free_range.first, free_range.second); ++it, ++first) {
+        for (; last != end_elem() && occupied_storage(last) <= storage_size(free_range.first, free_range.second); ++last, ++first) {
             try {
-                auto clone = cloning_policy_traits::move(it->policy(), base().get_allocator_ref(), it->ptr.second, free_range.first);
-                base().destroy(it->ptr.second);
-                *first = *it;
-                *it = elem_ptr{};
+                auto clone = cloning_policy_traits::move(last->policy(), base().get_allocator_ref(), last->ptr.second, free_range.first);
+                base().destroy(last->ptr.second);
+                swap(*first, *last);
                 first->ptr = std::make_pair(free_range.first,clone);
                 const auto next_storage = [](void_pointer p, size_type s, size_t a) { return next_aligned_storage(static_cast<pointer>(p) + s, a); };
                 free_range = std::make_pair(next_storage(free_range.first,first->size(),_align_max), next_storage(free_range.second, first->size(), _align_max));
             }
             catch (...) {
-                clear_till_end(it);
+                destroy_range(last, end_elem());
+                _free_elem = first;
+                _free_storage = static_cast<pointer>((end_elem() - 1)->ptr.first) + (end_elem() - 1)->size();
                 throw;
             }
         }
-        for (; it != end_elem(); ++it, ++first) {
-            *first = *it;
-            *it = elem_ptr{};
-        }
-
+        for (; last != end_elem(); ++last, ++first) swap(*first, *last);
         _free_elem = first;
+        _free_storage = static_cast<pointer>((end_elem() - 1)->ptr.first) + (end_elem() - 1)->size();
         return iterator(return_iterator);
     }
 
@@ -1540,7 +1553,7 @@ namespace estd
     {
         if (begin != end) {
             return  std::max_element(begin, end,
-                [](const auto& lhs, const auto& rhs) {return rhs.align() < lhs.align(); })->align();
+                [](const auto& lhs, const auto& rhs) {return lhs.align() < rhs.align(); })->align();
         }
         else
             return alignof(std::max_align_t);

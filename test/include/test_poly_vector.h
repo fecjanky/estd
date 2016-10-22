@@ -119,6 +119,7 @@ public:
     }
     virtual Interface* move(std::allocator<Interface>,void* dest)  override
     {
+        if(this->throw_on_copy_construction)throw std::runtime_error("Interface copy attempt with throw on copy set");
         return new (dest) Impl1(std::move(*this));
     }
 private:
@@ -151,6 +152,7 @@ public:
     }
     virtual Interface* move(std::allocator<Interface>,void* dest) override
     {
+        if (this->throw_on_copy_construction)throw std::runtime_error("Interface copy attempt with throw on copy set");
         return new (dest) Impl2T(std::move(*this));
     }
 
