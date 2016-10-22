@@ -375,6 +375,13 @@ namespace estd
 
     }  //namespace poly_vector_impl
 
+
+    template<
+	class Interface,
+	class Allocator = std::allocator<Interface>, 
+	typename NoExceptmovable = std::true_type
+    >class delegate_cloning_policy;
+
     template<
         class IF,
         class Allocator = std::allocator<IF>,
@@ -484,7 +491,7 @@ namespace estd
         }
     };
 
-    template<class Interface,class Allocator = std::allocator<Interface>, typename NoExceptmovable = std::true_type>
+    template<class Interface,class Allocator, typename NoExceptmovable>
     struct delegate_cloning_policy
     {
         enum Operation {
