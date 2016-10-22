@@ -1024,10 +1024,13 @@ namespace estd
         auto eptr_first = begin_elem() + (first - begin());
         if (last == end()) {
             clear_till_end(eptr_first);
+            if (empty())_align_max = 1;
             return end();
         }
         else {
-            return erase_internal_range(eptr_first, begin_elem() + (last - begin()));
+            auto it = erase_internal_range(eptr_first, begin_elem() + (last - begin()));
+            if (empty())_align_max = 1;
+            return it;
         }
     }
 
@@ -1128,7 +1131,7 @@ namespace estd
     {
         using copy = std::conditional_t<interface_type_noexcept_movable::value,
                 std::false_type,std::true_type>;
-        if (n <= capacities().first && avg_size <= capacities().second && _align_max < max_align)  return;
+        if (n <= capacities().first && avg_size <= capacities().second && _align_max >= max_align)  return;
         if (n > max_size())throw std::length_error("poly_vector reserve size too big");
         increase_storage(n, avg_size, max_align, copy{});
     }
@@ -1259,6 +1262,7 @@ namespace estd
         tidy();
         base().swap(a);
         set_ptrs(ret);
+        _align_max = max_align;
     }
 
     template<class I,class A,class C>

@@ -15,7 +15,7 @@ int PullInTestPolyVectorLibrary() { return 0; }
 
 std::atomic<size_t> Interface::last_id {0};
 
-TEST(poly_vector_basic_tests, default_constructed_poly_vec_is_empty)
+TEST(poly_vector_basic_tests, default_constructed_poly_vec_is_empty_with_max_align_equals_one)
 {
     estd::poly_vector<Interface> v;
     EXPECT_TRUE(v.empty());
@@ -25,10 +25,11 @@ TEST(poly_vector_basic_tests, default_constructed_poly_vec_is_empty)
     EXPECT_EQ(0, v.capacity());
     EXPECT_EQ(0, v.capacities().first);
     EXPECT_EQ(0, v.capacities().second);
+    EXPECT_EQ(1, v.max_align());
 }
 
 
-TEST(poly_vector_basic_tests, reserve_increases_capacity)
+TEST(poly_vector_basic_tests, reserve_increases_capacity_with_default_align_as_max_align_t)
 {
     estd::poly_vector<Interface> v;
     constexpr size_t n = 16;
@@ -41,6 +42,18 @@ TEST(poly_vector_basic_tests, reserve_increases_capacity)
     EXPECT_LE(n, v.capacity());
     EXPECT_LE(n, v.capacities().first);
     EXPECT_LE(n*avg_s, v.capacities().second);
+    EXPECT_EQ(alignof(std::max_align_t), v.max_align());
+}
+
+TEST(poly_vector_basic_tests, reserve_reallocates_capacity_when_max_align_changes)
+{
+    estd::poly_vector<Interface> v;
+    constexpr size_t n = 16;
+    constexpr size_t avg_s = 64;
+    v.reserve(n, avg_s);
+    auto old_data = v.data();
+    v.reserve(n, avg_s, 32);
+    EXPECT_NE(old_data, v.data());
 }
 
 TEST(poly_vector_basic_tests, reserve_does_not_increase_capacity_when_size_is_less_than_current_capacity)
