@@ -90,7 +90,7 @@ int main(int argc, char*argv[]) try {
         auto p = static_cast<Interface*>(_aligned_malloc(page_size, align));
         #else
         Interface* p{};
-        posix_memalign(static_cast<void**>(&p), align, page_size);
+        posix_memalign(reinterpret_cast<void**>(&p), align, page_size);
         #endif
         if (std::rand() % 2) {
             pv.push_back(Implementation1(std::rand()));
