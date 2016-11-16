@@ -89,7 +89,8 @@ int main(int argc, char*argv[]) try {
         #ifdef _WIN32
         auto p = static_cast<Interface*>(_aligned_malloc(page_size, align));
         #else
-        auto p = static_cast<Interface*>(aligned_alloc(align,page_size));
+        Interface* p{};
+        posix_memalign(&p, align, page_size);
         #endif
         if (std::rand() % 2) {
             pv.push_back(Implementation1(std::rand()));
