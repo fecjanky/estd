@@ -1,91 +1,123 @@
+#include <vector>
 #include <iostream>
-#include <random>
 #include <sstream>
+#include <stdexcept>
+#include <cstdint>
+#include <memory>
+#include <malloc.h>
+#include <algorithm>
 #include <chrono>
-#include <cstdio>
-#include <unordered_set>
-#include <string>
-#include <poly_vector.h>
-#include <iterator>
 
-#include "bench_classes.h"
+#include <poly_vector.h>
+
 
 using namespace estd;
 
-template<typename T, typename C>
-T fill_poly_vector(unsigned int num, InterfaceCreator<T, C>)
-{
-    auto creator = InterfaceCreator<T, C>::getCreatorVector();
-    std::random_device rd;
-    std::uniform_int_distribution<size_t> ud(0, creator.size() - 1);
-    T v;
-    for (auto i = 0U; i != num; ++i) {
-        creator[ud(rd)](v);
-    }
-    return v;
-}
+constexpr auto cache_size       = 8 * 1024 * 1024U;
+constexpr auto cache_line_size  = 64U;
 
-template<class Functor, class T>
-std::chrono::milliseconds benchmark_access(const T& v, unsigned int mult_factor) {
-    auto start = std::chrono::high_resolution_clock::now();
-    for (auto i = 0U; i != mult_factor; ++i) {
-        for (auto it = v.begin(); it != v.end(); ++it) {
-            Functor::invoke(it);
-        }
-    }
-    return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start);
-}
+struct Interface {
 
-struct PolyVectorFunc {
-    static void invoke(estd::poly_vector<Interface>::const_iterator i) {
-        i->doYourThing();
-    }
+    virtual void doYourThing() = 0;
+
+    virtual std::string toString() const = 0;
+
+    virtual ~Interface() = default;
 };
 
-struct UniqVectorFunc {
-    static void invoke(std::vector<std::unique_ptr<Interface>>::const_iterator i) {
-        (*i)->doYourThing();
+
+class Implementation1 : public Interface {
+public:
+    Implementation1(int seed)// : _current{ seed } 
+    {}
+
+    void doYourThing() override
+    {
+        //_current += _current;
     }
+
+    std::string toString() const override
+    {
+        return std::string("Implementation1(");// + std::to_string(_current) + ")";
+    }
+private:
+    //int _current;
 };
 
-const char * const help = "usage %s <num of elems> <num of iterations> <poly_vec|unique_ptr_vec>\n";
+class Implementation2 : public Interface {
+public:
 
-int main(int argc, char* argv[])
-try {
-    unsigned int num_of_elems{}, mult_factor{};
-    if (argc < 4)throw std::runtime_error("invalid num of arguments");
+    Implementation2(double op1, double) //: _op1{ op1 }
+    {}
+
+    void doYourThing() override
+    {
+        //_op1 = pow(_op1, _op1);
+    }
+
+    std::string toString() const override
+    {
+        return std::string("Implementation2(");//) + std::to_string(_op1) + ")";
+    }
+private:
+    //double _op1;
+};
+
+constexpr auto num_objs = 2 * cache_size / std::max(sizeof(Implementation1),sizeof(Implementation2));
+
+using namespace std::chrono;
+
+int main(int argc, char*argv[]) try {
+
+    unsigned int iteration_count{};
+    if (argc < 2)throw std::runtime_error("invalid num of arguments");
     {
         std::istringstream iss(argv[1]);
         iss.exceptions(std::istream::failbit | std::istream::badbit);
-        iss >> num_of_elems;
+        iss >> iteration_count;
     }
-    {
-        std::istringstream iss(argv[2]);
-        iss.exceptions(std::istream::failbit | std::istream::badbit);
-        iss >> mult_factor;
+    constexpr auto align = cache_line_size;
+    constexpr auto size = std::max(sizeof(Implementation1), sizeof(Implementation2));
+    poly_vector<Interface> pv;
+    std::vector<Interface*> sv;
+    pv.reserve(num_objs, size, align);
+    sv.reserve(num_objs);
+    for (auto i = 0; i < num_objs; ++i) {
+        auto p = static_cast<Interface*>(_aligned_malloc(size, align));
+        if (std::rand() % 2) {
+            pv.push_back(Implementation1(std::rand()));
+            p = new(p) Implementation1(std::rand());
+        }
+        else {
+            pv.push_back(Implementation2(1.1, 1.3));
+            p = new(p) Implementation2(1.1, 1.3);
+        }
+        sv.push_back(p);
     }
 
-    std::string type(argv[3]);
-    if (type == "poly_vec") {
-        auto pv = fill_poly_vector(num_of_elems, InterfaceCreator<estd::poly_vector<Interface>, PolyVectorCreator>());
-        auto pv_duration = benchmark_access<PolyVectorFunc>(pv, mult_factor);
-        std::unordered_set<std::string> vals;
-        std::transform(pv.begin(),pv.end(),std::inserter(vals,vals.end()),[](const Interface& i){return i.toString();});
-        std::cout << pv_duration.count() << " ms , unique_elems:" << vals.size()<<"\n";
-    }
-    else if (type == "unique_ptr_vec") {
-        auto sv = fill_poly_vector(num_of_elems, InterfaceCreator < std::vector < std::unique_ptr<Interface>>, UniquePtrCreator>());
-        auto sv_duration = benchmark_access<UniqVectorFunc>(sv, mult_factor);
-        std::unordered_set<std::string> vals;
-        std::transform(sv.begin(),sv.end(),std::inserter(vals,vals.end()),[](const std::unique_ptr<Interface>& i){return i->toString();});
-        std::cout << sv_duration.count() << " ms, unique_elems:" << vals.size()<<"\n";
-    }
-    else throw std::runtime_error("invlid vector type");
+    // Shuffle pointers for random allocation simulation
+    std::random_shuffle(sv.begin(), sv.end());
 
+
+    auto start_seq = std::chrono::high_resolution_clock::now();
+    for (auto c = 0; c < iteration_count; c++) {
+        std::for_each(pv.begin(), pv.end(), [](Interface& i) { i.doYourThing(); });
+    }
+    auto end_seq = std::chrono::high_resolution_clock::now();
+
+    auto start_rand = std::chrono::high_resolution_clock::now();
+    for (auto c = 0; c < iteration_count; c++) {
+        std::for_each(sv.begin(), sv.end(), [](Interface* i) {i->doYourThing(); });
+    }
+    auto end_rand = std::chrono::high_resolution_clock::now();
+
+    std::cout << "poly_vec:" << std::chrono::duration_cast<milliseconds>(end_seq - start_seq).count() << " ms\n";
+    std::cout << "vector:" << std::chrono::duration_cast<milliseconds>(end_rand - start_rand).count() << " ms\n";
     return 0;
 }
 catch (const std::exception& e) {
     std::cerr << e.what() << std::endl;
+    const char * help = "%s <iteration count>";
     std::printf(help, argv[0]);
     return 1;
 }
@@ -94,3 +126,4 @@ catch (...)
     std::cerr << "Unknown exception\n";
     return 1;
 }
+

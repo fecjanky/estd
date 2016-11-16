@@ -117,9 +117,6 @@
     <ClCompile Include="src\main.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="include\bench_classes.h" />
-  </ItemGroup>
-  <ItemGroup>
     <Natvis Include="..\estd\poly_vector.natvis" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

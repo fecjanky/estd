@@ -380,7 +380,7 @@ namespace estd
     class Interface,
     class Allocator = std::allocator<Interface>, 
     typename NoExceptmovable = std::true_type
-    >class delegate_cloning_policy;
+    >struct delegate_cloning_policy;
 
     template<
         class IF,
@@ -789,19 +789,19 @@ namespace estd
         //template <class InputIterator>
         //iterator insert (const_iterator position, InputIterator first, InputIterator last);
         //iterator insert (const_iterator position, polyvectoriterator first, polyvectoriterator last);
-        iterator            erase(const_iterator position);
-        iterator            erase(const_iterator first, const_iterator last);
+        iterator                    erase(const_iterator position);
+        iterator                    erase(const_iterator first, const_iterator last);
         ///////////////////////////////////////////////
         // Iterators
         ///////////////////////////////////////////////
-        iterator            begin()     noexcept;
-        iterator            end()       noexcept;
-        const_iterator      begin()     const   noexcept;
-        const_iterator      end()       const   noexcept;
-        reverse_iterator    rbegin()    noexcept;
-        reverse_iterator    rend()      noexcept;
-        const_iterator      rbegin()    const   noexcept;
-        const_iterator      rend()      const   noexcept;
+        iterator                    begin()     noexcept;
+        iterator                    end()       noexcept;
+        const_iterator              begin()     const   noexcept;
+        const_iterator              end()       const   noexcept;
+        reverse_iterator            rbegin()    noexcept;
+        reverse_iterator            rend()      noexcept;
+        const_iterator              rbegin()    const   noexcept;
+        const_iterator              rend()      const   noexcept;
         ///////////////////////////////////////////////
         // Capacity
         ///////////////////////////////////////////////
@@ -904,10 +904,10 @@ namespace estd
         ////////////////////////////
         // Members
         ////////////////////////////
-        elem_ptr_pointer    _free_elem;
-        void_pointer        _begin_storage;
-        void_pointer        _free_storage;
-        size_t              _align_max;
+        elem_ptr_pointer        _free_elem;
+        void_pointer            _begin_storage;
+        void_pointer            _free_storage;
+        size_t                  _align_max;
     };
 
     template<
