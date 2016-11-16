@@ -567,7 +567,7 @@ namespace estd
 
 
     template<class IF,class Allocator,class CP>
-    class poly_vector_iterator
+    class poly_vector_iterator : public std::iterator<std::random_access_iterator_tag,IF>
     {
     public:
         using interface_type = IF;

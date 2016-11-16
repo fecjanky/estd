@@ -74,7 +74,7 @@
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
       <SDLCheck>true</SDLCheck>
-      <AdditionalIncludeDirectories>$(SolutionDir)..\include;$(SolutionDir)..\googletest\googletest\include\;$(SolutionDir)..\test\include;$(SolutionDir)..\googletest\googlemock\include\;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)..\include;$(SolutionDir)..\googletest\googletest\include\;$(SolutionDir)..\test\include;$(SolutionDir)..\googletest\googlemock\include\;$(SolutionDir)..\googletest\googletest\include\;$(SolutionDir)..\test\include;$(SolutionDir)..\googletest\googlemock\include\;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
       <PreprocessorDefinitions>_MBCS;GTEST_USE_OWN_TR1_TUPLE=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
@@ -89,7 +89,7 @@
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
       <SDLCheck>true</SDLCheck>
-      <AdditionalIncludeDirectories>$(SolutionDir)..\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)..\include;$(SolutionDir)..\googletest\googletest\include\;$(SolutionDir)..\test\include;$(SolutionDir)..\googletest\googlemock\include\;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <GenerateDebugInformation>true</GenerateDebugInformation>
@@ -102,7 +102,7 @@
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
-      <AdditionalIncludeDirectories>$(SolutionDir)..\include;$(SolutionDir)..\googletest\googletest\include\;$(SolutionDir)..\test\include;$(SolutionDir)..\googletest\googlemock\include\;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)..\include;$(SolutionDir)..\googletest\googletest\include\;$(SolutionDir)..\test\include;$(SolutionDir)..\googletest\googlemock\include\;$(SolutionDir)..\googletest\googletest\include\;$(SolutionDir)..\test\include;$(SolutionDir)..\googletest\googlemock\include\;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <PreprocessorDefinitions>_MBCS;GTEST_USE_OWN_TR1_TUPLE=0;NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
@@ -121,7 +121,7 @@
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
-      <AdditionalIncludeDirectories>$(SolutionDir)..\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)..\include;$(SolutionDir)..\googletest\googletest\include\;$(SolutionDir)..\test\include;$(SolutionDir)..\googletest\googlemock\include\;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <GenerateDebugInformation>true</GenerateDebugInformation>

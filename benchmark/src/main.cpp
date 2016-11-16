@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <memory>
 #include <malloc.h>
+#include <stdlib.h>
 #include <algorithm>
 #include <chrono>
 
@@ -15,6 +16,7 @@ using namespace estd;
 
 constexpr auto cache_size       = 8 * 1024 * 1024U;
 constexpr auto cache_line_size  = 64U;
+constexpr auto page_size        = 4 * 1024;
 
 struct Interface {
 
@@ -83,7 +85,12 @@ int main(int argc, char*argv[]) try {
     pv.reserve(num_objs, size, align);
     sv.reserve(num_objs);
     for (auto i = 0; i < num_objs; ++i) {
-        auto p = static_cast<Interface*>(_aligned_malloc(size, align));
+        static_assert(page_size > size, "this should not happen...");
+        #ifdef _WIN32
+        auto p = static_cast<Interface*>(_aligned_malloc(page_size, align));
+        #else
+        auto p = static_cast<Interface*>(aligned_alloc(align,page_size));
+        #endif
         if (std::rand() % 2) {
             pv.push_back(Implementation1(std::rand()));
             p = new(p) Implementation1(std::rand());
@@ -100,13 +107,13 @@ int main(int argc, char*argv[]) try {
 
 
     auto start_seq = std::chrono::high_resolution_clock::now();
-    for (auto c = 0; c < iteration_count; c++) {
+    for (auto c = 0U; c < iteration_count; c++) {
         std::for_each(pv.begin(), pv.end(), [](Interface& i) { i.doYourThing(); });
     }
     auto end_seq = std::chrono::high_resolution_clock::now();
 
     auto start_rand = std::chrono::high_resolution_clock::now();
-    for (auto c = 0; c < iteration_count; c++) {
+    for (auto c = 0U; c < iteration_count; c++) {
         std::for_each(sv.begin(), sv.end(), [](Interface* i) {i->doYourThing(); });
     }
     auto end_rand = std::chrono::high_resolution_clock::now();
