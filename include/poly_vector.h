@@ -785,8 +785,8 @@ namespace estd
         void                swap(poly_vector& x)    noexcept;
 
         // TODO: insert, erase,emplace, emplace_back, assign?
-        //template<class descendant_type>
-        //iterator insert (const_iterator position, descendant_type&& val);
+        template<class descendant_type>
+        iterator insert (const_iterator position, descendant_type&& val);
         //template <class InputIterator>
         //iterator insert (const_iterator position, InputIterator first, InputIterator last);
         //iterator insert (const_iterator position, polyvectoriterator first, polyvectoriterator last);
@@ -1601,6 +1601,18 @@ namespace estd
     {
         return ((p->size() + _align_max - 1) / _align_max) * _align_max;
     }
+
+    template<class I, class A, class C>
+    template<class descendant_type>
+    inline auto poly_vector<I, A, C>::insert( const_iterator position, descendant_type && val ) -> iterator
+    {
+        if (position == end()) {
+            push_back( std::forward<descendant_type>( val ) );
+            return std::prev( end() );
+        }
+        return iterator();
+    }
+
 }  // namespace estd
 
 #endif  //POLY_VECTOR_H_

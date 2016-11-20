@@ -344,6 +344,16 @@ TYPED_TEST_P(poly_vector_modifiers_test, basic_guarantee_when_there_is_an_except
     }
 }
 
+TYPED_TEST_P( poly_vector_modifiers_test, insert_at_end )
+{
+    auto o = Impl1();
+    auto id = o.getId();
+    auto old_size = this->v.size();
+    this->v.insert( this->v.end(), std::move( o ) );
+    EXPECT_EQ( id, this->v.back().getId() );
+    EXPECT_EQ( old_size + 1, this->v.size() );
+}
+
 REGISTER_TYPED_TEST_CASE_P(poly_vector_modifiers_test,
     back_accesses_the_last_element, 
     front_accesses_the_first_element,
@@ -356,7 +366,8 @@ REGISTER_TYPED_TEST_CASE_P(poly_vector_modifiers_test,
     copy_assignment_copies_contained_elems,
     move_assignment_moves_contained_elems,
     strog_guarantee_when_there_is_an_exception_during_push_back_w_reallocation,
-    basic_guarantee_when_there_is_an_exception_during_erase_and_last_element_is_not_included_in_erased_range
+    basic_guarantee_when_there_is_an_exception_during_erase_and_last_element_is_not_included_in_erased_range,
+    insert_at_end
 );
 
 INSTANTIATE_TYPED_TEST_CASE_P(poly_vector, poly_vector_modifiers_test, CloneTypes);
