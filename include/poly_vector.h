@@ -786,7 +786,8 @@ namespace estd
 
         // TODO: insert, erase,emplace, emplace_back, assign?
         template<class descendant_type>
-        iterator insert (const_iterator position, descendant_type&& val);
+        std::enable_if_t<std::is_base_of<interface_type, std::decay_t<descendant_type>>::value, iterator>
+            insert( const_iterator position, descendant_type&& val );
         //template <class InputIterator>
         //iterator insert (const_iterator position, InputIterator first, InputIterator last);
         //iterator insert (const_iterator position, polyvectoriterator first, polyvectoriterator last);
@@ -1581,10 +1582,10 @@ namespace estd
         size_t new_size,size_t new_elem_size, size_t new_elem_alignment) const noexcept
     {
         auto max_alignment = this->max_alignment(new_elem_alignment);
-        auto initial_alignment_buffer = max_alignment - alignof(std::max_align_t);
+        auto initial_alignment_buffer = max_alignment;
         auto new_object_size = ((new_elem_size + max_alignment - 1) / max_alignment)*max_alignment;
         auto buffer_size = std::accumulate(begin_elem(),end_elem(),initial_alignment_buffer,
-            [=](size_t val,const auto& p) {
+            [max_alignment](size_t val,const auto& p) {
             return val + ((p.size()+ max_alignment - 1) / max_alignment)*max_alignment;
         });
         auto avg_obj_size = !empty() ? (buffer_size + new_object_size + size()) / (size() + 1) : new_object_size;
@@ -1604,7 +1605,8 @@ namespace estd
 
     template<class I, class A, class C>
     template<class descendant_type>
-    inline auto poly_vector<I, A, C>::insert( const_iterator position, descendant_type && val ) -> iterator
+    inline auto poly_vector<I, A, C>::insert( const_iterator position, descendant_type && val ) ->
+        std::enable_if_t<std::is_base_of<interface_type, std::decay_t<descendant_type>>::value, iterator>
     {
         if (position == end()) {
             push_back( std::forward<descendant_type>( val ) );
