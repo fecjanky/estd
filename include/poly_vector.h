@@ -390,7 +390,7 @@ namespace estd
     >class poly_vector;
     
     template<class Allocator,class CloningPolicy>
-    struct alignas(alignof(std::max_align_t)) poly_vector_elem_ptr : private CloningPolicy
+    struct poly_vector_elem_ptr : private CloningPolicy
     {
         using IF = typename  std::allocator_traits<Allocator>::value_type;
         using void_pointer = typename std::allocator_traits<Allocator>::void_pointer;
@@ -762,6 +762,7 @@ namespace estd
         static_assert(std::is_polymorphic<interface_type>::value, "interface_type is not polymorphic");
         static_assert(poly_vector_impl::is_cloning_policy<CloningPolicy,interface_type,Allocator>::value,"invalid cloning policy type");
         static constexpr auto default_avg_size = 4 * sizeof(void*);
+        static constexpr auto default_alignement = alignof(interface_reference);
         ///////////////////////////////////////////////
         // Ctors,Dtors & assignment
         ///////////////////////////////////////////////
@@ -945,7 +946,7 @@ namespace estd
         _free_storage{ other._free_storage }, _align_max{ other._align_max }
     {
         other._begin_storage = other._free_storage = other._free_elem = nullptr;
-        other._align_max = 1;
+        other._align_max = default_alignement;
     }
 
     template<class I,class A,class C>
@@ -998,7 +999,7 @@ namespace estd
     inline void poly_vector<I,A,C>::clear() noexcept
     {
         clear_till_end(begin_elem());
-        _align_max = 1;
+        _align_max = default_alignement;
     }
 
     template<class I,class A,class C>
@@ -1024,12 +1025,12 @@ namespace estd
         auto eptr_first = begin_elem() + (first - begin());
         if (last == end()) {
             clear_till_end(eptr_first);
-            if (empty())_align_max = 1;
+            if (empty())_align_max = default_alignement;
             return end();
         }
         else {
             auto it = erase_internal_range(eptr_first, begin_elem() + (last - begin()));
-            if (empty())_align_max = 1;
+            if (empty())_align_max = default_alignement;
             return it;
         }
     }
